@@ -1,0 +1,21 @@
+[package]
+name = "murmur-audio"
+description = "Microphone capture with pre-roll, resampling to 16 kHz, and silence trimming."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+murmur-core = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+cpal = "0.18"
+rubato = "5"
+earshot = "1"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"

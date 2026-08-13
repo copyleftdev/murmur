@@ -13,6 +13,10 @@ rust-version = "1.85"
 [workspace.dependencies]
 murmur-core = { path = "crates/murmur-core", version = "0.1.0" }
 murmur-inject = { path = "crates/murmur-inject", version = "0.1.0" }
+murmur-audio = { path = "crates/murmur-audio", version = "0.1.0" }
+murmur-hotkey = { path = "crates/murmur-hotkey", version = "0.1.0" }
+murmur-asr = { path = "crates/murmur-asr", version = "0.1.0" }
+murmur-engine = { path = "crates/murmur-engine", version = "0.1.0" }
 
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }

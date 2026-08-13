@@ -1,0 +1,22 @@
+[package]
+name = "murmur-engine"
+description = "The dictation loop: trigger to microphone to transcript to cursor."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+murmur-core = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+murmur-asr = { workspace = true }
+murmur-audio = { workspace = true }
+murmur-hotkey = { workspace = true }
+murmur-inject = { workspace = true }
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
