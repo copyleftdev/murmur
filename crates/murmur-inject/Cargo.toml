@@ -1,0 +1,22 @@
+[package]
+name = "murmur-inject"
+description = "Put text at the cursor of whatever application has focus."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+murmur-core = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+evdev = "0.13"
+wl-clipboard-rs = "0.9"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"

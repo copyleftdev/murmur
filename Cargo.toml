@@ -1,0 +1,31 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+authors = ["copyleftdev"]
+repository = "https://github.com/copyleftdev/murmur"
+rust-version = "1.85"
+
+[workspace.dependencies]
+murmur-core = { path = "crates/murmur-core", version = "0.1.0" }
+murmur-inject = { path = "crates/murmur-inject", version = "0.1.0" }
+
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+toml = "0.9"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+
+[profile.bench]
+lto = "thin"

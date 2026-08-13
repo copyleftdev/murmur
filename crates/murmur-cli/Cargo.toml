@@ -1,0 +1,28 @@
+[package]
+name = "murmur-cli"
+description = "Command-line surface for Murmur: diagnostics, self-tests, and one-shot injection."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "murmur"
+path = "src/main.rs"
+
+[dependencies]
+murmur-core = { workspace = true }
+murmur-inject = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+toml = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+evdev = "0.13"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
