@@ -51,9 +51,11 @@ Also working, with one important caveat:
 - **NVIDIA Nemotron 3.5 cache-aware streaming ASR** (`murmur transcribe --stream`),
   which transcribes while you speak. See "Why streaming is not the default" below.
 
+- **Live partial text** while you speak, produced by re-running the same batch
+  model over the growing recording on a worker thread
+
 Not yet:
 
-- Live partials in the HUD via periodic re-transcription
 - The iced overlay — the terminal surface stands in
 - RemoteDesktop portal backend for full Unicode on GNOME
 - Optional Nemotron polish pass
@@ -172,11 +174,24 @@ Dictation ends precisely where that risk is highest — you release the key just
 after your last word. A tool that usually drops it is not usable, and 20 ms of
 latency is not worth a word.
 
-So the plan is to use each for what it is good at: streaming for live partials
-in the HUD, and batch for the text that actually gets typed. Since Parakeet on a
-GPU transcribes 11 seconds in 36 ms, periodically re-running it over the growing
-recording is affordable enough to produce partials from the *same* model, which
-may remove the need for a second one entirely.
+So live text comes from the batch model instead. Parakeet transcribes 11 seconds
+in 36 ms on a GPU, which makes re-transcribing the whole recording every few
+hundred milliseconds cheap — and it means the words you watch appear are
+produced by exactly the model that types them, rather than by a second model
+that might disagree with it. No streaming weights required.
+
+Three rules make that safe:
+
+- **Inference never runs on the main loop.** A partial pass on the critical path
+  would delay the release it is supposed to be hiding. It runs on a worker.
+- **Stale snapshots are dropped, not queued.** By the time a queued snapshot is
+  transcribed it is already out of date, and the next one is always better.
+- **The pace is proportional.** A pass taking `d` earns a gap of `5d`, bounded to
+  300 ms–2 s, so a long dictation on a slow machine backs off by itself instead
+  of competing with the final pass for the device.
+
+Both passes share one loaded model, so the final pass may wait for one partial to
+finish — bounded, and cheaper than a second copy of the weights on the GPU.
 
 `crates/murmur-asr/tests/streaming_accuracy.rs` pins the limitation, so if a
 future export fixes it the test fails and tells us to revisit this.

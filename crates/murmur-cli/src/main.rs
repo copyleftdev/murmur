@@ -115,7 +115,8 @@ fn listen(force_mock: bool) -> Result<()> {
     println!("murmur \u{2014} hold {} and speak", config.trigger.key);
     println!("  microphone  {} ({} Hz)", microphone.name(), microphone.sample_rate());
     println!("  transcriber {}", transcriber.name());
-    println!("  injection   {}\n", sink.name());
+    println!("  injection   {}", sink.name());
+    println!("  partials    live text while you speak, from the same model\n");
     if config.trigger.hands_free {
         println!("  double-tap {} for hands-free; press again to stop.", config.trigger.key);
     }

@@ -199,6 +199,25 @@ impl Microphone {
         Ok(Capture { trimmed: full - samples.len(), samples, duration })
     }
 
+    /// The audio captured so far, without ending the recording.
+    ///
+    /// Deliberately skips the voice-activity trim that [`finish`] applies:
+    /// trimming is a latency optimisation for the final pass, and applying it to
+    /// a partial would make the text jump around as the trim boundary moved.
+    ///
+    /// [`finish`]: Self::finish
+    ///
+    /// # Errors
+    /// Fails if resampling rejects the buffer.
+    pub fn snapshot(&self) -> Result<Option<Capture>> {
+        let Some(raw) = self.shared.lock().ok().and_then(|s| s.recording.clone()) else {
+            return Ok(None);
+        };
+        let samples = resample::to_target(&raw, self.rate)?;
+        let duration = Duration::from_secs_f32(samples.len() as f32 / TARGET_SAMPLE_RATE as f32);
+        Ok(Some(Capture { trimmed: 0, samples, duration }))
+    }
+
     /// Drop whatever is being recorded without producing a capture.
     pub fn discard(&self) {
         if let Ok(mut shared) = self.shared.lock() {

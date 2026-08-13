@@ -40,6 +40,13 @@ pub trait Recorder {
     fn level(&self) -> f32 {
         0.0
     }
+    /// Audio captured so far, without ending the recording.
+    ///
+    /// `None` means partials are unavailable, which is not an error: a recorder
+    /// that cannot be read mid-capture simply produces no live text.
+    fn snapshot(&self) -> Option<Recorded> {
+        None
+    }
 }
 
 impl Recorder for murmur_audio::Microphone {
@@ -57,6 +64,10 @@ impl Recorder for murmur_audio::Microphone {
 
     fn level(&self) -> f32 {
         Self::level(self)
+    }
+
+    fn snapshot(&self) -> Option<Recorded> {
+        Self::snapshot(self).ok().flatten().map(Into::into)
     }
 }
 
@@ -98,6 +109,14 @@ impl Fixture {
 }
 
 impl Recorder for Fixture {
+    fn snapshot(&self) -> Option<Recorded> {
+        self.recording.then(|| Recorded {
+            samples: self.audio.clone(),
+            trimmed: 0,
+            duration: Duration::from_secs_f32(self.audio.len() as f32 / 16_000.0),
+        })
+    }
+
     fn begin(&mut self) {
         self.begins += 1;
         self.recording = true;

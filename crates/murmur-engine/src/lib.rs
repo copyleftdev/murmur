@@ -5,17 +5,20 @@
 //! in as [`Event`]s. Keeping the split honest is what makes the timing numbers
 //! trustworthy — the engine measures, the core decides.
 
+pub mod partials;
 pub mod recorder;
 pub mod stats;
 
 use murmur_asr::Transcriber;
-use murmur_core::{Command, Event, Hud, Millis, Session, Stage};
+use murmur_core::{Command, Event, Hud, Millis, Phase, Session, Stage};
 use murmur_hotkey::{Edge, TriggerEvent};
 use murmur_inject::TextSink;
 use std::collections::VecDeque;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+pub use partials::{Partials, SharedTranscriber};
 pub use recorder::{Fixture, Recorded, Recorder};
 pub use stats::Stats;
 
@@ -50,7 +53,8 @@ pub trait Surface {
 pub struct Engine {
     session: Session,
     recorder: Box<dyn Recorder>,
-    transcriber: Box<dyn Transcriber>,
+    transcriber: SharedTranscriber,
+    partials: Partials,
     sink: Box<dyn TextSink>,
     surface: Box<dyn Surface>,
     stats: Stats,
@@ -65,9 +69,13 @@ impl Engine {
         sink: Box<dyn TextSink>,
         surface: Box<dyn Surface>,
     ) -> Self {
+        // One loaded model serves both the live partials and the final pass, so
+        // what the user watches appear is produced by exactly what types it.
+        let transcriber: SharedTranscriber = Arc::new(Mutex::new(transcriber));
         Self {
             session,
             recorder,
+            partials: Partials::spawn(Arc::clone(&transcriber)),
             transcriber,
             sink,
             surface,
@@ -103,12 +111,34 @@ impl Engine {
                 Err(RecvTimeoutError::Timeout) => {
                     if self.session.is_capturing() {
                         self.surface.level(self.recorder.level());
+                        self.request_partial();
                     }
+                    self.deliver_partials()?;
                     self.pump(Event::Tick(self.now()))?;
                 }
                 Err(RecvTimeoutError::Disconnected) => return Ok(()),
             }
         }
+    }
+
+    /// Hand the worker the audio recorded so far, if it is ready for more.
+    fn request_partial(&mut self) {
+        let Phase::Capturing { id, .. } = self.session.phase() else {
+            return;
+        };
+        if let Some(recorded) = self.recorder.snapshot() {
+            self.partials.offer(id, recorded.samples, Instant::now());
+        }
+    }
+
+    /// Show whatever the worker finished. Stale text is dropped by the session,
+    /// which knows which utterance is current and this thread does not.
+    fn deliver_partials(&mut self) -> Result<()> {
+        for reply in self.partials.collect() {
+            tracing::debug!(id = reply.id, took_ms = reply.took.as_millis(), "partial");
+            self.pump(Event::Partial { at: self.now(), id: reply.id, text: reply.text })?;
+        }
+        Ok(())
     }
 
     /// Feed one event in and run the resulting work to completion.
@@ -131,6 +161,7 @@ impl Engine {
     fn execute(&mut self, command: Command) -> Result<Option<Event>> {
         Ok(match command {
             Command::StartCapture { .. } => {
+                self.partials.reset();
                 self.recorder.begin();
                 None
             }
@@ -186,8 +217,15 @@ impl Engine {
         if capture.is_empty() {
             return Ok(String::new());
         }
-        let transcript =
-            self.transcriber.transcribe(&capture.samples).map_err(|e| e.to_string())?;
+        // Blocks until any partial in flight finishes, which is the price of
+        // sharing one loaded model. Bounded by a single pass, and the alternative
+        // is a second copy of the weights on the GPU.
+        let transcript = self
+            .transcriber
+            .lock()
+            .map_err(|_| "transcriber lock poisoned".to_owned())?
+            .transcribe(&capture.samples)
+            .map_err(|e| e.to_string())?;
         tracing::info!(
             audio_ms = capture.duration.as_millis(),
             trimmed = capture.trimmed,

@@ -55,6 +55,14 @@ impl Watcher {
     fn saw_error(&self) -> bool {
         self.huds.lock().unwrap().iter().any(|h| h.starts_with("error:"))
     }
+
+    fn saw_partial(&self) -> bool {
+        self.huds.lock().unwrap().iter().any(|h| h.starts_with("partial"))
+    }
+
+    fn seen(&self) -> Vec<String> {
+        self.huds.lock().unwrap().clone()
+    }
 }
 
 impl Surface for Watcher {
@@ -62,7 +70,7 @@ impl Surface for Watcher {
         let label = match hud {
             Hud::Hidden => "hidden".to_owned(),
             Hud::Listening { .. } => "listening".to_owned(),
-            Hud::Partial { .. } => "partial".to_owned(),
+            Hud::Partial { text } => format!("partial: {text}"),
             Hud::Thinking => "thinking".to_owned(),
             Hud::Error { message } => format!("error: {message}"),
         };
@@ -263,4 +271,61 @@ fn latency_is_measured_from_release_to_text() {
         release_to_text < Millis(2_000),
         "the loop added unexplained latency: {release_to_text}"
     );
+}
+
+#[test]
+fn live_partials_appear_while_the_user_is_still_speaking() {
+    let sink = Spy::default();
+    let watcher = Watcher::default();
+    let mut engine = engine(
+        Box::new(Fixture::speaking()),
+        Mock::new(["live text"]),
+        sink.clone(),
+        watcher.clone(),
+    );
+    // Long enough for the pacing floor to allow at least one pass.
+    drive(&mut engine, &[Duration::from_millis(700)]);
+
+    assert!(
+        watcher.saw_partial(),
+        "no partial text was shown during a 700ms hold: {:?}",
+        watcher.seen()
+    );
+    assert_eq!(sink.emitted(), vec!["live text "], "the final text still lands once");
+}
+
+#[test]
+fn partials_never_reach_the_cursor() {
+    let sink = Spy::default();
+    let mut engine = engine(
+        Box::new(Fixture::speaking()),
+        Mock::new(["live text"]),
+        sink.clone(),
+        Watcher::default(),
+    );
+    drive(&mut engine, &[Duration::from_millis(700)]);
+
+    assert_eq!(
+        sink.emitted().len(),
+        1,
+        "a partial was injected as well as the final text: {:?}",
+        sink.emitted()
+    );
+}
+
+#[test]
+fn a_tap_produces_no_partials_and_no_text() {
+    let sink = Spy::default();
+    let watcher = Watcher::default();
+    let mut engine = Engine::new(
+        Session::new(Tuning::default(), Formatter::new(FormatConfig::default())),
+        Box::new(Fixture::speaking()),
+        Box::new(Mock::default()),
+        Box::new(sink.clone()),
+        Box::new(watcher.clone()),
+    );
+    drive(&mut engine, &[Duration::from_millis(30)]);
+
+    assert!(sink.emitted().is_empty());
+    assert!(!watcher.saw_partial(), "a stray tap produced live text");
 }
