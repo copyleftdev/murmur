@@ -64,8 +64,6 @@ pub fn registration_failures() -> usize {
 }
 
 
-const PROVIDER: &str = "libonnxruntime_providers_cuda.so";
-
 /// Where Murmur keeps a private CUDA runtime, if the system has none.
 #[must_use]
 pub fn bundled_dir() -> PathBuf {

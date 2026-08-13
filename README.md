@@ -46,8 +46,14 @@ Working today:
 - Text injection through a `/dev/uinput` virtual keyboard, verified end to end
 - Latency accounting reported as percentiles of *release to text*
 
+Also working, with one important caveat:
+
+- **NVIDIA Nemotron 3.5 cache-aware streaming ASR** (`murmur transcribe --stream`),
+  which transcribes while you speak. See "Why streaming is not the default" below.
+
 Not yet:
 
+- Live partials in the HUD via periodic re-transcription
 - The iced overlay — the terminal surface stands in
 - RemoteDesktop portal backend for full Unicode on GNOME
 - Optional Nemotron polish pass
@@ -134,6 +140,46 @@ touched.
 `LD_LIBRARY_PATH` cannot help here — glibc reads it once at process start — so
 Murmur loads each library itself with `RTLD_GLOBAL`, which also satisfies the
 sub-libraries cuDNN opens by bare name at runtime.
+
+### Why streaming is not the default
+
+Streaming ought to win. A batch model cannot start until the key is released, so
+all of its inference lands inside the delay the user feels; a cache-aware
+streaming model consumes the utterance as it happens and leaves only the last
+chunk outstanding. Measured, that is exactly what happens:
+
+| audio | batch, release to text | streaming tail |
+| --- | --- | --- |
+| 11 s | 35.7 ms | 14.0 ms |
+| 66 s | 174.2 ms | 13.8 ms |
+
+Batch latency scales with utterance length. The streaming tail is flat.
+
+It still is not the default, because the streaming model decodes only on chunk
+boundaries and cannot be made to emit its final partial chunk — up to 560 ms of
+speech. Its API has no flush, and padding the tail does not induce one: neither
+digital silence nor a noise floor yields a single token, because the decoder
+emits on acoustic evidence rather than elapsed frames.
+
+On a clip cut mid-utterance:
+
+```
+batch      "And so, my fellow Americans, ask not what"
+streaming  "And so my fellow Americans, ask not"
+```
+
+Dictation ends precisely where that risk is highest — you release the key just
+after your last word. A tool that usually drops it is not usable, and 20 ms of
+latency is not worth a word.
+
+So the plan is to use each for what it is good at: streaming for live partials
+in the HUD, and batch for the text that actually gets typed. Since Parakeet on a
+GPU transcribes 11 seconds in 36 ms, periodically re-running it over the growing
+recording is affordable enough to produce partials from the *same* model, which
+may remove the need for a second one entirely.
+
+`crates/murmur-asr/tests/streaming_accuracy.rs` pins the limitation, so if a
+future export fixes it the test fails and tells us to revisit this.
 
 #### Never trusting the device
 

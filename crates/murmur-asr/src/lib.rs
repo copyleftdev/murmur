@@ -12,10 +12,14 @@ pub mod cuda;
 pub mod models;
 #[cfg(feature = "parakeet")]
 pub mod parakeet;
+#[cfg(feature = "parakeet")]
+pub mod streaming;
 
 pub use mock::Mock;
 #[cfg(feature = "parakeet")]
 pub use parakeet::Parakeet;
+#[cfg(feature = "parakeet")]
+pub use streaming::{NemotronStream, StreamingTranscriber};
 
 use std::time::Duration;
 

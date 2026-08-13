@@ -8,6 +8,7 @@ use murmur_asr::{Mock, Transcriber};
 use murmur_audio::Microphone;
 use murmur_core::{AsrEngine, Config, Formatter, Session};
 use murmur_engine::Engine;
+use murmur_asr::StreamingTranscriber as _;
 use murmur_inject::{Injector, TextSink};
 use std::time::Duration;
 
@@ -54,6 +55,9 @@ enum Command {
         /// Override the accelerator: cpu, cuda or tensor-rt.
         #[arg(long)]
         accelerator: Option<String>,
+        /// Use the streaming model, feeding audio in chunks as the daemon does.
+        #[arg(long)]
+        stream: bool,
     },
     /// List the microphones Murmur can see.
     Devices,
@@ -76,8 +80,8 @@ fn main() -> Result<()> {
             selftest::run(Config::default().inject.keystroke_delay_us)
         }
         Command::Type { text, after } => type_text(&text.join(" "), after),
-        Command::Transcribe { path, repeat, model, accelerator } =>
-            transcribe(&path, repeat, model.as_deref(), accelerator.as_deref()),
+        Command::Transcribe { path, repeat, model, accelerator, stream } =>
+            transcribe(&path, repeat, model.as_deref(), accelerator.as_deref(), stream),
         Command::Devices => devices(),
         Command::Config { init } => config(init),
     }
@@ -143,6 +147,10 @@ fn transcriber(config: &Config, force_mock: bool) -> Result<Box<dyn Transcriber>
                     .with_context(|| format!("loading a model from {}", dir.display()))?;
             Ok(Box::new(model))
         }
+        AsrEngine::Nemotron => anyhow::bail!(
+            "the streaming engine does not fit the batch Transcriber trait; \
+             use `murmur transcribe --stream` while the daemon integration lands"
+        ),
         AsrEngine::Whisper => anyhow::bail!(
             "the whisper engine is not wired up yet; set asr.engine = \"parakeet\""
         ),
@@ -171,6 +179,7 @@ fn transcribe(
     repeat: usize,
     model_dir: Option<&std::path::Path>,
     accelerator: Option<&str>,
+    stream: bool,
 ) -> Result<()> {
     let mut config = settings::load()?;
     if let Some(dir) = model_dir {
@@ -186,6 +195,10 @@ fn transcribe(
     }
     let samples = read_wav(path)?;
     let audio = Duration::from_secs_f32(samples.len() as f32 / 16_000.0);
+
+    if stream {
+        return transcribe_streaming(&config, &samples, audio, repeat.max(1));
+    }
 
     let mut model = transcriber(&config, false)?;
     println!("  model  {}", model.name());
@@ -216,6 +229,52 @@ fn transcribe(
             warm[warm.len() - 1]
         );
     }
+    println!("\n{text}\n");
+    Ok(())
+}
+
+/// Feed a recording through the streaming model the way the daemon will.
+///
+/// The number that matters is the tail: everything before it happened while the
+/// user was still talking.
+fn transcribe_streaming(
+    config: &Config,
+    samples: &[f32],
+    audio: Duration,
+    repeat: usize,
+) -> Result<()> {
+    let dir = settings::expand_home(&config.asr.model_dir);
+    let mut model = murmur_asr::NemotronStream::open(
+        &dir,
+        config.asr.precision,
+        config.asr.accelerator,
+        config.asr.language.as_deref(),
+    )
+    .with_context(|| format!("loading a streaming model from {}", dir.display()))?;
+
+    println!("  model  {}", model.name());
+    println!("  audio  {:.2}s", audio.as_secs_f32());
+    println!("  chunk  {}ms", model.chunk_samples() * 1000 / 16_000);
+
+    let mut tails = Vec::with_capacity(repeat);
+    let mut text = String::new();
+    let mut total = Duration::ZERO;
+    for _ in 0..repeat {
+        let (transcript, tail) = murmur_asr::streaming::transcribe_all(&mut model, samples)?;
+        tails.push(tail);
+        total = transcript.elapsed;
+        text = transcript.text;
+    }
+
+    tails.sort_unstable();
+    println!(
+        "  total  {total:?} of compute spread across {:.2}s of speech",
+        audio.as_secs_f32()
+    );
+    println!(
+        "  tail   {:?} median of {repeat} \u{2014} the only part the user waits for",
+        tails[tails.len() / 2]
+    );
     println!("\n{text}\n");
     Ok(())
 }
@@ -282,7 +341,7 @@ fn model_report(config: &Config, width: usize) {
     }
 
     let gpu = gpu_usable();
-    let chosen = murmur_asr::models::choose(&variants, gpu, config.asr.precision);
+    let chosen = murmur_asr::models::choose(&variants, gpu, config.asr.precision, family_for(config));
     for variant in &variants {
         let name = variant.dir.file_name().unwrap_or(variant.dir.as_os_str());
         let mark = if Some(variant) == chosen { "\u{2713}" } else { "\u{2022}" };
@@ -293,6 +352,15 @@ fn model_report(config: &Config, width: usize) {
             name.to_string_lossy(),
             variant.kind
         );
+        let _ = variant.family;
+    }
+}
+
+/// The architecture the configured engine needs.
+fn family_for(config: &Config) -> murmur_asr::models::Family {
+    match config.asr.engine {
+        AsrEngine::Nemotron => murmur_asr::models::Family::NemotronStreaming,
+        _ => murmur_asr::models::Family::ParakeetTdt,
     }
 }
 

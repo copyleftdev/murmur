@@ -53,8 +53,10 @@ pub const TARGET_SAMPLE_RATE: u32 = 16_000;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum AsrEngine {
-    /// NVIDIA Parakeet TDT via ONNX Runtime.
+    /// NVIDIA Parakeet TDT via ONNX Runtime: one call per finished recording.
     Parakeet,
+    /// NVIDIA Nemotron cache-aware streaming ASR: transcribes while you speak.
+    Nemotron,
     /// whisper.cpp, as a portability fallback.
     Whisper,
     /// Echoes fixture text; used by the simulator and by `murmur doctor`.

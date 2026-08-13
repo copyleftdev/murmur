@@ -39,7 +39,7 @@ impl Parakeet {
     ) -> Result<Self, AsrError> {
         let gpu_usable = gpu_usable(accelerator);
         let variants = models::discover(root);
-        let chosen = models::choose(&variants, gpu_usable, precision)
+        let chosen = models::choose(&variants, gpu_usable, precision, models::Family::ParakeetTdt)
             .ok_or_else(|| AsrError::ModelMissing(root.display().to_string()))?;
 
         tracing::info!(
@@ -108,7 +108,7 @@ impl Parakeet {
 }
 
 /// Can this machine actually run a model on the GPU right now?
-fn gpu_usable(accelerator: Accelerator) -> bool {
+pub(crate) fn gpu_usable(accelerator: Accelerator) -> bool {
     if matches!(accelerator, Accelerator::Cpu) {
         return false;
     }
