@@ -45,6 +45,15 @@ enum Command {
     Transcribe {
         /// Path to a WAV file. Any sample rate; it is resampled to 16 kHz.
         path: std::path::PathBuf,
+        /// Transcribe this many times, reporting warm timings separately.
+        #[arg(long, default_value_t = 1)]
+        repeat: usize,
+        /// Override the model directory from the config.
+        #[arg(long)]
+        model: Option<std::path::PathBuf>,
+        /// Override the accelerator: cpu, cuda or tensor-rt.
+        #[arg(long)]
+        accelerator: Option<String>,
     },
     /// List the microphones Murmur can see.
     Devices,
@@ -57,14 +66,7 @@ enum Command {
 }
 
 fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_env("MURMUR_LOG")
-                .unwrap_or_else(|_| "warn".into()),
-        )
-        .with_target(false)
-        .with_writer(std::io::stderr)
-        .init();
+    install_tracing();
 
     match Cli::parse().command {
         Command::Listen { mock } => listen(mock),
@@ -74,10 +76,27 @@ fn main() -> Result<()> {
             selftest::run(Config::default().inject.keystroke_delay_us)
         }
         Command::Type { text, after } => type_text(&text.join(" "), after),
-        Command::Transcribe { path } => transcribe(&path),
+        Command::Transcribe { path, repeat, model, accelerator } =>
+            transcribe(&path, repeat, model.as_deref(), accelerator.as_deref()),
         Command::Devices => devices(),
         Command::Config { init } => config(init),
     }
+}
+
+/// Set up logging, and — on CUDA builds — the layer that watches ONNX Runtime's
+/// execution-provider registration so the model can report its real device.
+fn install_tracing() {
+    use tracing_subscriber::layer::SubscriberExt as _;
+    use tracing_subscriber::util::SubscriberInitExt as _;
+
+    let filter = tracing_subscriber::EnvFilter::try_from_env("MURMUR_LOG")
+        .unwrap_or_else(|_| "warn".into());
+    let fmt = tracing_subscriber::fmt::layer().with_target(false).with_writer(std::io::stderr);
+
+    let registry = tracing_subscriber::registry().with(filter).with(fmt);
+    #[cfg(feature = "cuda")]
+    let registry = registry.with(murmur_asr::cuda::ProviderWatch);
+    registry.init();
 }
 
 fn listen(force_mock: bool) -> Result<()> {
@@ -146,8 +165,24 @@ fn read_wav(path: &std::path::Path) -> Result<Vec<f32>> {
     Ok(murmur_audio::resample::to_target(&mono, spec.sample_rate)?)
 }
 
-fn transcribe(path: &std::path::Path) -> Result<()> {
-    let config = settings::load()?;
+fn transcribe(
+    path: &std::path::Path,
+    repeat: usize,
+    model_dir: Option<&std::path::Path>,
+    accelerator: Option<&str>,
+) -> Result<()> {
+    let mut config = settings::load()?;
+    if let Some(dir) = model_dir {
+        config.asr.model_dir = dir.display().to_string();
+    }
+    if let Some(name) = accelerator {
+        config.asr.accelerator = match name {
+            "cpu" => murmur_core::Accelerator::Cpu,
+            "cuda" => murmur_core::Accelerator::Cuda,
+            "tensor-rt" | "tensorrt" => murmur_core::Accelerator::TensorRt,
+            other => anyhow::bail!("unknown accelerator {other:?}"),
+        };
+    }
     let samples = read_wav(path)?;
     let audio = Duration::from_secs_f32(samples.len() as f32 / 16_000.0);
 
@@ -155,9 +190,32 @@ fn transcribe(path: &std::path::Path) -> Result<()> {
     println!("  model  {}", model.name());
     println!("  audio  {:.2}s", audio.as_secs_f32());
 
-    let transcript = model.transcribe(&samples)?;
-    println!("  took   {:?} ({:.0}x realtime)", transcript.elapsed, transcript.realtime_factor(audio));
-    println!("\n{}\n", transcript.text);
+    let mut runs = Vec::with_capacity(repeat.max(1));
+    let mut text = String::new();
+    for _ in 0..repeat.max(1) {
+        let transcript = model.transcribe(&samples)?;
+        runs.push(transcript.elapsed);
+        text = transcript.text;
+    }
+
+    // The first call pays for kernel selection, autotuning and allocator warm-up.
+    // Reporting it together with the rest would flatter or slander the device
+    // depending only on how many times you happened to run it.
+    let first = runs[0];
+    println!("  first  {first:?} ({:.0}x realtime)", audio.as_secs_f32() / first.as_secs_f32());
+    if runs.len() > 1 {
+        let mut warm: Vec<Duration> = runs[1..].to_vec();
+        warm.sort_unstable();
+        let median = warm[warm.len() / 2];
+        println!(
+            "  warm   {median:?} median of {} ({:.0}x realtime), best {:?}, worst {:?}",
+            warm.len(),
+            audio.as_secs_f32() / median.as_secs_f32(),
+            warm[0],
+            warm[warm.len() - 1]
+        );
+    }
+    println!("\n{text}\n");
     Ok(())
 }
 
@@ -219,11 +277,11 @@ fn doctor() -> Result<()> {
 /// this is checked and named rather than assumed.
 fn accelerator_report(width: usize) {
     #[cfg(feature = "cuda")]
-    match murmur_asr::parakeet::cuda_availability() {
-        Ok(()) => println!("  \u{2713} {:width$}  CUDA execution provider loads", "accelerator"),
-        Err(why) => {
-            println!("  \u{2717} {:width$}  CUDA unavailable: {why}", "accelerator");
-            println!("      {:width$}  \u{2192} install the matching CUDA runtime, or set asr.accelerator = \"cpu\"", "");
+    {
+        let dir = murmur_asr::cuda::bundled_dir();
+        match murmur_asr::cuda::ensure_runtime() {
+            0 => println!("  \u{2022} {:width$}  CUDA build; no bundled runtime at {}", "accelerator", dir.display()),
+            n => println!("  \u{2713} {:width$}  CUDA build; {n} runtime libraries from {}", "accelerator", dir.display()),
         }
     }
     #[cfg(not(feature = "cuda"))]

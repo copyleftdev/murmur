@@ -11,7 +11,7 @@ rust-version.workspace = true
 [features]
 default = ["parakeet"]
 parakeet = ["dep:parakeet-rs"]
-cuda = ["parakeet-rs/cuda", "dep:libloading"]
+cuda = ["parakeet", "parakeet-rs/cuda", "dep:libloading", "dep:tracing-subscriber"]
 tensorrt = ["parakeet-rs/tensorrt"]
 
 [dependencies]
@@ -20,6 +20,7 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 parakeet-rs = { version = "0.3", optional = true }
 libloading = { version = "0.8", optional = true }
+tracing-subscriber = { workspace = true, optional = true }
 
 [dev-dependencies]
 hound = "3"

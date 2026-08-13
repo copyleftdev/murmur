@@ -34,12 +34,35 @@ impl Parakeet {
         let config = ExecutionConfig::new().with_execution_provider(provider);
         let requested = requested.to_owned();
 
+        #[cfg(feature = "cuda")]
+        let failures_before = crate::cuda::registration_failures();
+
         let started = Instant::now();
         let model = ParakeetTDT::from_pretrained(dir, Some(config))
             .map_err(|e| AsrError::Load(e.to_string()))?;
 
+        // ORT logs a failed provider registration and silently continues on the
+        // CPU, so the device is reported from its verdict, never from our request.
+        #[cfg(feature = "cuda")]
+        let requested = if crate::cuda::registration_failures() > failures_before {
+            tracing::warn!(
+                "ONNX Runtime could not register the requested execution provider; \
+                 this model is running on the CPU"
+            );
+            format!("cpu ({requested} registration failed)")
+        } else {
+            requested
+        };
+
         let quantised = dir.join("encoder-model.int8.onnx").exists()
             && !dir.join("encoder-model.onnx").exists();
+        if quantised && requested.starts_with("cuda") {
+            tracing::warn!(
+                "int8 weights run poorly on the CUDA provider: unsupported ops fall back \
+                 to the CPU and the graph is copied across the bus repeatedly. Use the \
+                 fp32 model on a GPU."
+            );
+        }
         let label = format!(
             "parakeet-tdt-0.6b-v3{} on {requested}",
             if quantised { " (int8)" } else { "" }
@@ -50,48 +73,6 @@ impl Parakeet {
     }
 }
 
-/// Can ONNX Runtime's CUDA provider actually be loaded on this machine?
-///
-/// ONNX Runtime registers execution providers by `dlopen`-ing a shared library
-/// and *logs* the failure rather than refusing to build the session, so a model
-/// asked to run on the GPU will quietly run on the CPU instead. Doing the same
-/// `dlopen` ourselves, up front, turns that silent downgrade into a fact we can
-/// report — and the loader's own error message is exactly the diagnostic the
-/// user needs ("libcublasLt.so.13: cannot open shared object file").
-///
-/// # Errors
-/// Returns the dynamic loader's reason the provider is unusable.
-#[cfg(feature = "cuda")]
-pub fn cuda_availability() -> Result<(), String> {
-    const PROVIDER: &str = "libonnxruntime_providers_cuda.so";
-
-    let beside_binary = std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(|dir| dir.join(PROVIDER)));
-    let candidates =
-        [beside_binary, Some(std::path::PathBuf::from(PROVIDER))].into_iter().flatten();
-
-    let mut reason = String::from("provider library not found");
-    let mut found_the_library = false;
-    for candidate in candidates {
-        // SAFETY: loading a library runs its initialisers. This one ships with
-        // ONNX Runtime and is about to be loaded by ORT itself regardless.
-        match unsafe { libloading::Library::new(&candidate) } {
-            Ok(_) => return Ok(()),
-            Err(error) => {
-                // A candidate that exists explains the *real* problem — a missing
-                // CUDA dependency — while a candidate that does not merely says
-                // so. Never let the second overwrite the first.
-                if !found_the_library {
-                    reason = error.to_string();
-                    found_the_library = candidate.exists();
-                }
-            }
-        }
-    }
-    Err(reason)
-}
-
 /// Map the configured accelerator to a provider this binary was actually built
 /// with *and* can actually load.
 fn provider_for(accelerator: Accelerator) -> (ExecutionProvider, String) {
@@ -100,16 +81,8 @@ fn provider_for(accelerator: Accelerator) -> (ExecutionProvider, String) {
         Accelerator::Cuda => {
             #[cfg(feature = "cuda")]
             {
-                match cuda_availability() {
-                    Ok(()) => (ExecutionProvider::Cuda, "cuda".into()),
-                    Err(why) => {
-                        tracing::warn!(
-                            %why,
-                            "CUDA provider cannot be loaded; running on CPU instead"
-                        );
-                        (ExecutionProvider::Cpu, "cpu (cuda unavailable)".into())
-                    }
-                }
+                crate::cuda::ensure_runtime();
+                (ExecutionProvider::Cuda, "cuda".into())
             }
             #[cfg(not(feature = "cuda"))]
             {

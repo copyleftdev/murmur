@@ -76,17 +76,56 @@ Swap `encoder-model.int8.onnx` for `encoder-model.onnx` + `encoder-model.onnx.da
 cargo build --release --features cuda
 ```
 
-ONNX Runtime's prebuilt CUDA provider is linked against **CUDA 13 and cuDNN 9**.
-If those are not installed, the provider fails to load and ORT falls back to the
-CPU *silently* — so Murmur `dlopen`s the provider itself before use and tells
-you exactly which library is missing:
+Measured on two RTX 3080 Ti, 11 seconds of speech, warm median of five runs:
+
+| weights | device | median | realtime |
+| --- | --- | --- | --- |
+| int8 | CPU | 477 ms | 23x |
+| int8 | CUDA | 460 ms | 24x |
+| fp32 | CPU | 464 ms | 24x |
+| **fp32** | **CUDA** | **36 ms** | **307x** |
+
+**Use fp32 on a GPU.** int8 is a CPU optimisation: the CUDA provider has no
+kernels for most quantised ops, so it inserts hundreds of Memcpy nodes and
+shuttles the graph across the bus, arriving exactly where it started. Murmur
+warns when you pair them.
+
+The first call is always slower — kernel selection, autotuning and allocator
+warm-up. `murmur transcribe --repeat N` reports it separately, because averaging
+it in flatters or slanders the device depending only on how many times you ran it.
+
+#### CUDA without root
+
+ONNX Runtime's provider is linked against **CUDA 13**, which distributions lag
+well behind. You do not need a system CUDA toolkit for this: only the *driver* is
+privileged, and it is already installed. Everything else is ordinary userspace
+shared objects, so Murmur keeps its own copy:
+
+```sh
+CD=~/.local/share/murmur/cuda
+mkdir -p "$CD/wheels" "$CD/lib" && cd "$CD/wheels"
+pip download --no-deps -d . nvidia-cuda-runtime nvidia-cublas nvidia-cudnn-cu13
+for w in *.whl; do python3 -m zipfile -e "$w" extracted/; done
+find extracted -name "*.so*" -type f -exec cp -P {} "$CD/lib/" \;
+```
+
+Undo it with `rm -rf ~/.local/share/murmur/cuda`. Nothing else on the system is
+touched.
+
+`LD_LIBRARY_PATH` cannot help here — glibc reads it once at process start — so
+Murmur loads each library itself with `RTLD_GLOBAL`, which also satisfies the
+sub-libraries cuDNN opens by bare name at runtime.
+
+#### Never trusting the device
+
+ORT does not fail when a provider cannot be registered: it logs the error and
+carries on using the CPU. A build asking for the GPU will therefore report
+success while running at a fraction of the speed. Murmur watches ORT's own log
+and reports the device it actually got:
 
 ```
-✗ accelerator  CUDA unavailable: libcublasLt.so.13: cannot open shared object file
-                 → install the matching CUDA runtime, or set asr.accelerator = "cpu"
+model  parakeet-tdt-0.6b-v3 (int8) on cpu (cuda registration failed)
 ```
-
-Murmur never claims a device it did not actually run on.
 
 ## Try it
 

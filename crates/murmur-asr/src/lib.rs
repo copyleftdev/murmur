@@ -6,6 +6,8 @@
 //! end against [`Mock`], on a machine with no model, no ONNX runtime and no GPU.
 
 pub mod mock;
+#[cfg(feature = "cuda")]
+pub mod cuda;
 #[cfg(feature = "parakeet")]
 pub mod parakeet;
 
