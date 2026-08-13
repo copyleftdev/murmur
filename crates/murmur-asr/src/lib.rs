@@ -6,8 +6,12 @@
 //! end against [`Mock`], on a machine with no model, no ONNX runtime and no GPU.
 
 pub mod mock;
+#[cfg(feature = "parakeet")]
+pub mod parakeet;
 
 pub use mock::Mock;
+#[cfg(feature = "parakeet")]
+pub use parakeet::Parakeet;
 
 use std::time::Duration;
 

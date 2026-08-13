@@ -32,6 +32,9 @@ does not work on GNOME, which is why Murmur types through the kernel by default.
 
 Working today:
 
+- **NVIDIA Parakeet TDT 0.6B v3** transcription via ONNX Runtime, verified
+  against a clip with a known transcript (21x realtime on CPU with int8 weights)
+
 - Pure, IO-free session logic — push-to-talk, double-tap hands-free, tap
   rejection, utterance caps, transcription timeouts, continuation spacing
 - Text formatting — custom dictionary (multi-word), spoken commands
@@ -45,24 +48,64 @@ Working today:
 
 Not yet:
 
-- Parakeet transcription (the engine runs against a scripted transcriber today)
 - The iced overlay — the terminal surface stands in
 - RemoteDesktop portal backend for full Unicode on GNOME
 - Optional Nemotron polish pass
+
+## Models
+
+Murmur transcribes with NVIDIA Parakeet TDT 0.6B v3, exported to ONNX. The int8
+weights are 640 MB and quite fast enough on a CPU:
+
+```sh
+MD=~/.local/share/murmur/models/parakeet-tdt-0.6b-v3
+B=https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/main
+mkdir -p "$MD" && cd "$MD"
+for f in vocab.txt config.json nemo128.onnx \
+         decoder_joint-model.int8.onnx encoder-model.int8.onnx; do
+  curl -L -O "$B/$f"
+done
+```
+
+Swap `encoder-model.int8.onnx` for `encoder-model.onnx` + `encoder-model.onnx.data`
+(2.5 GB) for full precision.
+
+### GPU
+
+```sh
+cargo build --release --features cuda
+```
+
+ONNX Runtime's prebuilt CUDA provider is linked against **CUDA 13 and cuDNN 9**.
+If those are not installed, the provider fails to load and ORT falls back to the
+CPU *silently* — so Murmur `dlopen`s the provider itself before use and tells
+you exactly which library is missing:
+
+```
+✗ accelerator  CUDA unavailable: libcublasLt.so.13: cannot open shared object file
+                 → install the matching CUDA runtime, or set asr.accelerator = "cpu"
+```
+
+Murmur never claims a device it did not actually run on.
 
 ## Try it
 
 ```sh
 cargo build --release
-./target/release/murmur doctor      # what this session can and cannot do
-./target/release/murmur selftest    # prove injection without typing on your screen
-./target/release/murmur listen --mock
+./target/release/murmur doctor                    # what this session can and cannot do
+./target/release/murmur selftest                  # prove injection, without typing on your screen
+./target/release/murmur transcribe assets/jfk.wav # prove the model, offline
+./target/release/murmur listen                    # the real thing
+./target/release/murmur listen --mock             # the loop, without a model
 ```
 
 `selftest` is worth understanding: it creates the virtual keyboard, opens its own
 device node, `EVIOCGRAB`s it so the kernel delivers those events to nobody else,
 types a probe string, and decodes what comes back. It exercises the real
 injection path without spraying text across your desktop.
+
+`transcribe` is the offline way to check a model and measure it — it reports the
+realtime factor alongside the text, so a slow accelerator is visible immediately.
 
 `listen --mock` runs the entire loop — trigger, capture, format, inject — with a
 scripted transcriber. Focus a text editor first: it really does type.

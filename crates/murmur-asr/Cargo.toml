@@ -8,10 +8,21 @@ authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[features]
+default = ["parakeet"]
+parakeet = ["dep:parakeet-rs"]
+cuda = ["parakeet-rs/cuda", "dep:libloading"]
+tensorrt = ["parakeet-rs/tensorrt"]
+
 [dependencies]
 murmur-core = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+parakeet-rs = { version = "0.3", optional = true }
+libloading = { version = "0.8", optional = true }
+
+[dev-dependencies]
+hound = "3"
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }

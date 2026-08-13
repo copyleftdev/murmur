@@ -41,6 +41,11 @@ enum Command {
         #[arg(long, default_value_t = 3)]
         after: u64,
     },
+    /// Transcribe a WAV file. The offline way to check a model and measure it.
+    Transcribe {
+        /// Path to a WAV file. Any sample rate; it is resampled to 16 kHz.
+        path: std::path::PathBuf,
+    },
     /// List the microphones Murmur can see.
     Devices,
     /// Print the config path, and write a default config if there is none.
@@ -69,6 +74,7 @@ fn main() -> Result<()> {
             selftest::run(Config::default().inject.keystroke_delay_us)
         }
         Command::Type { text, after } => type_text(&text.join(" "), after),
+        Command::Transcribe { path } => transcribe(&path),
         Command::Devices => devices(),
         Command::Config { init } => config(init),
     }
@@ -110,11 +116,49 @@ fn transcriber(config: &Config, force_mock: bool) -> Result<Box<dyn Transcriber>
     if force_mock || config.asr.engine == AsrEngine::Mock {
         return Ok(Box::new(Mock::default().with_delay(Duration::from_millis(40))));
     }
-    anyhow::bail!(
-        "the {:?} engine is not wired up yet. Run `murmur listen --mock` to exercise \
-         the full loop with a scripted transcriber.",
-        config.asr.engine
-    )
+    match config.asr.engine {
+        AsrEngine::Parakeet => {
+            let dir = settings::expand_home(&config.asr.model_dir);
+            let model = murmur_asr::Parakeet::load(&dir, config.asr.accelerator)
+                .with_context(|| format!("loading the model in {}", dir.display()))?;
+            Ok(Box::new(model))
+        }
+        AsrEngine::Whisper => anyhow::bail!(
+            "the whisper engine is not wired up yet; set asr.engine = \"parakeet\""
+        ),
+        AsrEngine::Mock => unreachable!("handled above"),
+    }
+}
+
+/// Read a WAV file as 16 kHz mono, whatever it started as.
+fn read_wav(path: &std::path::Path) -> Result<Vec<f32>> {
+    let mut reader = hound::WavReader::open(path)
+        .with_context(|| format!("opening {}", path.display()))?;
+    let spec = reader.spec();
+    let interleaved: Vec<f32> = match spec.sample_format {
+        hound::SampleFormat::Float => reader.samples::<f32>().collect::<Result<_, _>>()?,
+        hound::SampleFormat::Int => {
+            let scale = f32::from(i16::MAX);
+            reader.samples::<i32>().map(|s| s.map(|v| v as f32 / scale)).collect::<Result<_, _>>()?
+        }
+    };
+    let mono = murmur_audio::resample::to_mono(&interleaved, spec.channels);
+    Ok(murmur_audio::resample::to_target(&mono, spec.sample_rate)?)
+}
+
+fn transcribe(path: &std::path::Path) -> Result<()> {
+    let config = settings::load()?;
+    let samples = read_wav(path)?;
+    let audio = Duration::from_secs_f32(samples.len() as f32 / 16_000.0);
+
+    let mut model = transcriber(&config, false)?;
+    println!("  model  {}", model.name());
+    println!("  audio  {:.2}s", audio.as_secs_f32());
+
+    let transcript = model.transcribe(&samples)?;
+    println!("  took   {:?} ({:.0}x realtime)", transcript.elapsed, transcript.realtime_factor(audio));
+    println!("\n{}\n", transcript.text);
+    Ok(())
 }
 
 fn doctor() -> Result<()> {
@@ -158,6 +202,8 @@ fn doctor() -> Result<()> {
         println!("      {:width$}  \u{2192} murmur listen --mock  # exercise the loop meanwhile", "");
     }
 
+    accelerator_report(width);
+
     let blocked = report.iter().any(|c| !c.available && c.name == "uinput");
     println!();
     if blocked {
@@ -165,6 +211,23 @@ fn doctor() -> Result<()> {
     }
     println!("  ready. `murmur selftest` verifies injection; `murmur listen --mock` the whole loop.");
     Ok(())
+}
+
+/// Report whether the configured accelerator can actually be used.
+///
+/// ONNX Runtime downgrades to CPU silently when a provider fails to load, so
+/// this is checked and named rather than assumed.
+fn accelerator_report(width: usize) {
+    #[cfg(feature = "cuda")]
+    match murmur_asr::parakeet::cuda_availability() {
+        Ok(()) => println!("  \u{2713} {:width$}  CUDA execution provider loads", "accelerator"),
+        Err(why) => {
+            println!("  \u{2717} {:width$}  CUDA unavailable: {why}", "accelerator");
+            println!("      {:width$}  \u{2192} install the matching CUDA runtime, or set asr.accelerator = \"cpu\"", "");
+        }
+    }
+    #[cfg(not(feature = "cuda"))]
+    println!("  \u{2022} {:width$}  CPU only (rebuild with --features cuda for GPU)", "accelerator");
 }
 
 fn devices() -> Result<()> {

@@ -24,9 +24,15 @@ clap = { workspace = true }
 toml = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+hound = "3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 evdev = "0.13"
+
+[features]
+default = []
+cuda = ["murmur-asr/cuda"]
+tensorrt = ["murmur-asr/tensorrt"]
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
