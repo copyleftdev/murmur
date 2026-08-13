@@ -1,5 +1,6 @@
 use crate::{AsrError, Transcriber, Transcript};
-use murmur_core::config::{Accelerator, TARGET_SAMPLE_RATE};
+use crate::models;
+use murmur_core::config::{Accelerator, Precision, TARGET_SAMPLE_RATE};
 use parakeet_rs::{ExecutionConfig, ExecutionProvider, ParakeetTDT, Transcriber as _};
 use std::path::Path;
 use std::time::Instant;
@@ -21,6 +22,39 @@ impl std::fmt::Debug for Parakeet {
 }
 
 impl Parakeet {
+    /// Find the best weights under `root` and load them.
+    ///
+    /// `root` may be a directory of models or a single model directory. The
+    /// choice between precisions is made from what the hardware can actually
+    /// do — see [`models::choose`] — rather than from what the config asked for,
+    /// because loading fp32 onto a machine with no working GPU costs 1.9 GB of
+    /// memory for nothing.
+    ///
+    /// # Errors
+    /// Fails if no model is found under `root`, or it cannot be loaded.
+    pub fn open(
+        root: &Path,
+        precision: Precision,
+        accelerator: Accelerator,
+    ) -> Result<Self, AsrError> {
+        let gpu_usable = gpu_usable(accelerator);
+        let variants = models::discover(root);
+        let chosen = models::choose(&variants, gpu_usable, precision)
+            .ok_or_else(|| AsrError::ModelMissing(root.display().to_string()))?;
+
+        tracing::info!(
+            dir = %chosen.dir.display(),
+            precision = ?chosen.kind,
+            gpu_usable,
+            candidates = variants.len(),
+            "selected weights"
+        );
+        // Without a usable GPU there is nothing for the accelerator to do, and
+        // asking for one only produces a warning the user cannot act on.
+        let effective = if gpu_usable { accelerator } else { Accelerator::Cpu };
+        Self::load(&chosen.dir, effective)
+    }
+
     /// Load the model in `dir`, which must hold the encoder, decoder and vocab.
     ///
     /// # Errors
@@ -70,6 +104,21 @@ impl Parakeet {
         tracing::info!(model = %label, load_ms = started.elapsed().as_millis(), "model ready");
 
         Ok(Self { model, label })
+    }
+}
+
+/// Can this machine actually run a model on the GPU right now?
+fn gpu_usable(accelerator: Accelerator) -> bool {
+    if matches!(accelerator, Accelerator::Cpu) {
+        return false;
+    }
+    #[cfg(feature = "cuda")]
+    {
+        crate::cuda::is_usable()
+    }
+    #[cfg(not(feature = "cuda"))]
+    {
+        false
     }
 }
 

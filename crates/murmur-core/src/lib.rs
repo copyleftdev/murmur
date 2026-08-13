@@ -13,7 +13,7 @@ pub mod time;
 
 pub use config::{
     Accelerator, AsrConfig, AsrEngine, AudioConfig, Config, InjectBackend, InjectConfig,
-    PolishConfig, TARGET_SAMPLE_RATE, TriggerConfig,
+    PolishConfig, Precision, TARGET_SAMPLE_RATE, TriggerConfig,
 };
 pub use session::{Command, Event, Hud, Latency, Mode, Phase, Session, Stage, Tuning, UtteranceId};
 pub use text::{DictEntry, EmitContext, FormatConfig, Formatter};

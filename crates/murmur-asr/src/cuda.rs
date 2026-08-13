@@ -125,6 +125,105 @@ pub fn preload(dir: &Path) -> usize {
     }
 }
 
+/// How many CUDA devices the driver can see.
+///
+/// Asked of the driver directly — `libcuda.so.1` is installed with the kernel
+/// module, not with any toolkit — so this answers "is there a usable GPU here"
+/// without loading a model, an execution provider, or 2.5 GB of weights. That
+/// is what makes it usable for *choosing* which weights to load.
+///
+/// # Errors
+/// Returns why the driver could not be asked.
+pub fn device_count() -> Result<i32, String> {
+    // SAFETY: the CUDA driver library, loaded read-only and never unloaded.
+    let driver = unsafe { Library::open(Some("libcuda.so.1"), RTLD_LAZY | RTLD_GLOBAL) }
+        .map_err(|e| e.to_string())?;
+
+    // SAFETY: both signatures are fixed by the CUDA driver API and have been
+    // stable since CUDA 1.0. `cuInit` must precede any other driver call.
+    let count = unsafe {
+        let init: libloading::os::unix::Symbol<unsafe extern "C" fn(u32) -> i32> =
+            driver.get(b"cuInit\0").map_err(|e| e.to_string())?;
+        let get_count: libloading::os::unix::Symbol<unsafe extern "C" fn(*mut i32) -> i32> =
+            driver.get(b"cuDeviceGetCount\0").map_err(|e| e.to_string())?;
+
+        let status = init(0);
+        if status != 0 {
+            return Err(format!("cuInit failed with CUDA error {status}"));
+        }
+        let mut devices = 0i32;
+        let status = get_count(&raw mut devices);
+        if status != 0 {
+            return Err(format!("cuDeviceGetCount failed with CUDA error {status}"));
+        }
+        devices
+    };
+    std::mem::forget(driver);
+    Ok(count)
+}
+
+/// The CUDA major ONNX Runtime's current provider links against.
+///
+/// Deliberately a single version rather than a list of plausible ones. An
+/// earlier attempt fell back to `libcudart.so.12`, which is installed on many
+/// machines that cannot run this provider at all — so the check "succeeded",
+/// 2.5 GB of fp32 weights were selected, and they then ran on the CPU. A
+/// runtime of the wrong major is not a runtime.
+///
+/// Only consulted when nothing is bundled; a bundled runtime names its own
+/// version, which is the version-agnostic path.
+const CUDART_SONAME: &str = "libcudart.so.13";
+
+/// Is the CUDA runtime — not merely the driver — actually loadable?
+///
+/// The driver is installed with the kernel module and is present on any machine
+/// with an NVIDIA card, so asking it about devices says nothing about whether
+/// ONNX Runtime will find the userspace libraries it links against. Checking the
+/// runtime separately is what stops a machine with a GPU but no CUDA toolkit
+/// from selecting 2.5 GB of fp32 weights and then running them on the CPU.
+///
+/// Version-agnostic where it can be: whatever `libcudart` was bundled decides
+/// which soname to try, so this keeps working when ONNX Runtime moves major
+/// versions and the bundled runtime moves with it.
+fn runtime_loadable() -> bool {
+    let bundled: Vec<String> = std::fs::read_dir(bundled_dir())
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|name| name.starts_with("libcudart.so."))
+        .collect();
+
+    bundled
+        .iter()
+        .map(String::as_str)
+        .chain(std::iter::once(CUDART_SONAME))
+        // SAFETY: NVIDIA's runtime library, opened lazily and never unloaded.
+        .any(|soname| unsafe { Library::open(Some(soname), RTLD_LAZY | RTLD_GLOBAL) }.is_ok())
+}
+
+/// Is this machine able to run a model on the GPU?
+///
+/// All three must hold: the build has a CUDA provider, the driver reports at
+/// least one device, and the userspace runtime is loadable. Any one alone is
+/// not enough, and the driver alone is the misleading one.
+#[must_use]
+pub fn is_usable() -> bool {
+    ensure_runtime();
+    if !matches!(device_count(), Ok(n) if n > 0) {
+        return false;
+    }
+    if runtime_loadable() {
+        return true;
+    }
+    tracing::warn!(
+        dir = %bundled_dir().display(),
+        "a CUDA device is present but its userspace runtime is not loadable; \
+         selecting CPU weights"
+    );
+    false
+}
+
 /// Make the CUDA runtime resident before ONNX Runtime asks for it.
 ///
 /// Returns how many libraries were loaded from Murmur's own directory; zero

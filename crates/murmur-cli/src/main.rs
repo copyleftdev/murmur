@@ -138,8 +138,9 @@ fn transcriber(config: &Config, force_mock: bool) -> Result<Box<dyn Transcriber>
     match config.asr.engine {
         AsrEngine::Parakeet => {
             let dir = settings::expand_home(&config.asr.model_dir);
-            let model = murmur_asr::Parakeet::load(&dir, config.asr.accelerator)
-                .with_context(|| format!("loading the model in {}", dir.display()))?;
+            let model =
+                murmur_asr::Parakeet::open(&dir, config.asr.precision, config.asr.accelerator)
+                    .with_context(|| format!("loading a model from {}", dir.display()))?;
             Ok(Box::new(model))
         }
         AsrEngine::Whisper => anyhow::bail!(
@@ -250,16 +251,7 @@ fn doctor() -> Result<()> {
         Err(error) => println!("  \u{2717} {:width$}  {error}", "microphone"),
     }
 
-    let model = settings::expand_home(&config.asr.model_dir);
-    if config.asr.engine == AsrEngine::Mock {
-        println!("  \u{2713} {:width$}  scripted transcriber (no model needed)", "model");
-    } else if model.exists() {
-        println!("  \u{2713} {:width$}  {}", "model", model.display());
-    } else {
-        println!("  \u{2717} {:width$}  {} is missing", "model", model.display());
-        println!("      {:width$}  \u{2192} murmur listen --mock  # exercise the loop meanwhile", "");
-    }
-
+    model_report(&config, width);
     accelerator_report(width);
 
     let blocked = report.iter().any(|c| !c.available && c.name == "uinput");
@@ -269,6 +261,51 @@ fn doctor() -> Result<()> {
     }
     println!("  ready. `murmur selftest` verifies injection; `murmur listen --mock` the whole loop.");
     Ok(())
+}
+
+/// Report which weights are installed and which would be loaded.
+///
+/// The choice depends on hardware, so showing it here saves the user working out
+/// why a 2.5 GB model did or did not get picked.
+fn model_report(config: &Config, width: usize) {
+    if config.asr.engine == AsrEngine::Mock {
+        println!("  \u{2713} {:width$}  scripted transcriber (no model needed)", "model");
+        return;
+    }
+
+    let root = settings::expand_home(&config.asr.model_dir);
+    let variants = murmur_asr::models::discover(&root);
+    if variants.is_empty() {
+        println!("  \u{2717} {:width$}  no model under {}", "model", root.display());
+        println!("      {:width$}  \u{2192} see the Models section of the README", "");
+        return;
+    }
+
+    let gpu = gpu_usable();
+    let chosen = murmur_asr::models::choose(&variants, gpu, config.asr.precision);
+    for variant in &variants {
+        let name = variant.dir.file_name().unwrap_or(variant.dir.as_os_str());
+        let mark = if Some(variant) == chosen { "\u{2713}" } else { "\u{2022}" };
+        let note = if Some(variant) == chosen { "  \u{2190} selected" } else { "" };
+        println!(
+            "  {mark} {:width$}  {} [{:?}]{note}",
+            "model",
+            name.to_string_lossy(),
+            variant.kind
+        );
+    }
+}
+
+/// Whether a GPU can actually be used, as the selector sees it.
+fn gpu_usable() -> bool {
+    #[cfg(feature = "cuda")]
+    {
+        murmur_asr::cuda::is_usable()
+    }
+    #[cfg(not(feature = "cuda"))]
+    {
+        false
+    }
 }
 
 /// Report whether the configured accelerator can actually be used.

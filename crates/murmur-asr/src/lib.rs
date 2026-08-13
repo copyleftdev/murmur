@@ -9,6 +9,8 @@ pub mod mock;
 #[cfg(feature = "cuda")]
 pub mod cuda;
 #[cfg(feature = "parakeet")]
+pub mod models;
+#[cfg(feature = "parakeet")]
 pub mod parakeet;
 
 pub use mock::Mock;

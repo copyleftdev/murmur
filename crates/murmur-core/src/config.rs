@@ -61,6 +61,21 @@ pub enum AsrEngine {
     Mock,
 }
 
+/// Which weights to load.
+///
+/// `Auto` picks fp32 when the GPU can actually be used and int8 otherwise. That
+/// is not a speed trade-off — the two are within noise of each other on a CPU —
+/// but a footprint one: int8 is a quarter of the size, and fp32 is the only
+/// precision the CUDA provider has kernels for.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Precision {
+    #[default]
+    Auto,
+    Fp32,
+    Int8,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Accelerator {
@@ -73,7 +88,9 @@ pub enum Accelerator {
 #[serde(default, deny_unknown_fields)]
 pub struct AsrConfig {
     pub engine: AsrEngine,
+    /// A directory of models, or a single model directory.
     pub model_dir: String,
+    pub precision: Precision,
     pub accelerator: Accelerator,
     /// `None` lets multilingual models detect the language per utterance.
     pub language: Option<String>,
@@ -83,7 +100,8 @@ impl Default for AsrConfig {
     fn default() -> Self {
         Self {
             engine: AsrEngine::Parakeet,
-            model_dir: "~/.local/share/murmur/models/parakeet-tdt-0.6b-v3".into(),
+            model_dir: "~/.local/share/murmur/models".into(),
+            precision: Precision::Auto,
             accelerator: Accelerator::Cuda,
             language: None,
         }
@@ -192,6 +210,11 @@ mod tests {
     fn an_unknown_key_is_rejected_rather_than_silently_ignored() {
         let err = serde_json::from_str::<Config>(r#"{"trigger":{"keyy":"CAPSLOCK"}}"#);
         assert!(err.is_err(), "typo in config was accepted");
+    }
+
+    #[test]
+    fn precision_defaults_to_auto_so_hardware_decides() {
+        assert_eq!(AsrConfig::default().precision, Precision::Auto);
     }
 
     #[test]

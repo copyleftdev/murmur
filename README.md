@@ -85,10 +85,29 @@ Measured on two RTX 3080 Ti, 11 seconds of speech, warm median of five runs:
 | fp32 | CPU | 464 ms | 24x |
 | **fp32** | **CUDA** | **36 ms** | **307x** |
 
-**Use fp32 on a GPU.** int8 is a CPU optimisation: the CUDA provider has no
-kernels for most quantised ops, so it inserts hundreds of Memcpy nodes and
-shuttles the graph across the bus, arriving exactly where it started. Murmur
-warns when you pair them.
+**Use fp32 on a GPU** — and Murmur does this for you. int8 is a CPU
+optimisation: the CUDA provider has no kernels for most quantised ops, so it
+inserts hundreds of Memcpy nodes and shuttles the graph across the bus, arriving
+exactly where it started.
+
+Note that int8 is not *faster* on a CPU either; it is a quarter of the size. So
+`asr.model_dir` points at a directory of models and `asr.precision = "auto"`
+picks fp32 when the GPU can genuinely be used and int8 otherwise, to save 1.9 GB
+of disk and memory when it cannot. `murmur doctor` shows the decision:
+
+```
+• model       parakeet-tdt-0.6b-v3 [Int8]
+✓ model       parakeet-tdt-0.6b-v3-fp32 [Fp32]  ← selected
+```
+
+Set `precision` to `"fp32"` or `"int8"` to decide it yourself; an explicit
+choice falls back rather than failing when those weights are not installed.
+
+"Can the GPU genuinely be used" is three questions, not one: the build must have
+a CUDA provider, the driver must report a device, *and* the userspace runtime
+must be loadable. The driver is the misleading one — it ships with the kernel
+module, so it is present on machines with no CUDA toolkit at all. Checking only
+the driver selects 2.5 GB of fp32 weights and then runs them on the CPU.
 
 The first call is always slower — kernel selection, autotuning and allocator
 warm-up. `murmur transcribe --repeat N` reports it separately, because averaging

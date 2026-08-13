@@ -8,7 +8,7 @@
 #![cfg(feature = "parakeet")]
 
 use murmur_asr::{Parakeet, Transcriber};
-use murmur_core::config::{Accelerator, AsrConfig};
+use murmur_core::config::{Accelerator, AsrConfig, Precision};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -37,14 +37,17 @@ fn read_wav(path: &Path) -> Vec<f32> {
     reader.samples::<i16>().map(|s| f32::from(s.expect("sample")) / scale).collect()
 }
 
-/// `Some(model)` when the model is installed, `None` when the test should skip.
+/// `Some(model)` when a model is installed, `None` when the test should skip.
+///
+/// Pinned to the CPU: these assert transcription, not throughput, and must give
+/// the same answer on a machine with no GPU.
 fn load() -> Option<Parakeet> {
-    let dir = model_dir();
-    if !dir.is_dir() {
-        eprintln!("skipping: no model at {}", dir.display());
+    let root = model_dir();
+    if murmur_asr::models::discover(&root).is_empty() {
+        eprintln!("skipping: no model under {}", root.display());
         return None;
     }
-    Some(Parakeet::load(&dir, Accelerator::Cpu).expect("loading the model"))
+    Some(Parakeet::open(&root, Precision::Auto, Accelerator::Cpu).expect("loading the model"))
 }
 
 #[test]
@@ -107,8 +110,12 @@ fn silence_transcribes_to_nothing_rather_than_hallucinating() {
 
 #[test]
 fn a_missing_model_directory_is_reported_as_missing_not_as_a_load_failure() {
-    let error = Parakeet::load(Path::new("/nonexistent/murmur/model"), Accelerator::Cpu)
-        .expect_err("should fail");
+    let error = Parakeet::open(
+        Path::new("/nonexistent/murmur/model"),
+        Precision::Auto,
+        Accelerator::Cpu,
+    )
+    .expect_err("should fail");
     assert!(
         matches!(error, murmur_asr::AsrError::ModelMissing(_)),
         "got {error:?}, which does not tell the user to fetch the model"
