@@ -59,6 +59,17 @@ enum Command {
         #[arg(long)]
         stream: bool,
     },
+    /// Show key presses as Murmur sees them. Use it to pick a trigger key.
+    Keys,
+    /// Record from the microphone and report whether anything was heard.
+    Mic {
+        /// Seconds to record.
+        #[arg(long, default_value_t = 3)]
+        seconds: u64,
+        /// Transcribe what was recorded, as a dictation would.
+        #[arg(long)]
+        transcribe: bool,
+    },
     /// List the microphones Murmur can see.
     Devices,
     /// Print the config path, and write a default config if there is none.
@@ -82,6 +93,8 @@ fn main() -> Result<()> {
         Command::Type { text, after } => type_text(&text.join(" "), after),
         Command::Transcribe { path, repeat, model, accelerator, stream } =>
             transcribe(&path, repeat, model.as_deref(), accelerator.as_deref(), stream),
+        Command::Keys => keys(),
+        Command::Mic { seconds, transcribe } => mic(seconds, transcribe),
         Command::Devices => devices(),
         Command::Config { init } => config(init),
     }
@@ -294,11 +307,27 @@ fn doctor() -> Result<()> {
     }
 
     let config = settings::load().unwrap_or_default();
-    match murmur_hotkey::key_by_name(&config.trigger.key).and_then(murmur_hotkey::watch) {
-        Ok(_) => println!("  \u{2713} {:width$}  {} is readable", "trigger", config.trigger.key),
-        Err(error) => {
-            println!("  \u{2717} {:width$}  {error}", "trigger");
+    match murmur_hotkey::key_by_name(&config.trigger.key) {
+        Ok(key) => {
+            let boards = murmur_hotkey::readable_keyboards(key);
+            println!(
+                "  \u{2713} {:width$}  {} declared by {} device(s)",
+                "trigger",
+                config.trigger.key,
+                boards.len()
+            );
+            for board in &boards {
+                println!("      {:width$}    {board}", "");
+            }
+            if !boards.is_empty() {
+                println!(
+                    "      {:width$}  \u{2192} a device declaring the key is not proof it has one; \
+                     run `murmur keys` and press it",
+                    ""
+                );
+            }
         }
+        Err(error) => println!("  \u{2717} {:width$}  {error}", "trigger"),
     }
     match Microphone::open(&config.audio) {
         Ok(microphone) => println!(
@@ -392,6 +421,73 @@ fn accelerator_report(width: usize) {
     }
     #[cfg(not(feature = "cuda"))]
     println!("  \u{2022} {:width$}  CPU only (rebuild with --features cuda for GPU)", "accelerator");
+}
+
+/// Print every key press, so a trigger that "does nothing" can be diagnosed.
+fn keys() -> Result<()> {
+    let config = settings::load()?;
+    println!("murmur keys \u{2014} press keys to see their names. Ctrl-C to quit.\n");
+    println!("  the configured trigger is {}\n", config.trigger.key);
+
+    let events = murmur_hotkey::watch_all()?;
+    while let Ok((code, edge)) = events.recv() {
+        if edge != murmur_hotkey::Edge::Down {
+            continue;
+        }
+        let name = murmur_hotkey::key_name(code).unwrap_or_else(|| format!("{code:?}"));
+        let note = if name == config.trigger.key { "   \u{2190} your trigger" } else { "" };
+        println!("  {name}{note}");
+    }
+    Ok(())
+}
+
+/// Record, then say plainly whether the microphone heard anything.
+///
+/// A trigger that appears to do nothing is usually one of two failures, and they
+/// look identical from the outside: the key never arrived, or the audio was
+/// silent. `murmur keys` answers the first; this answers the second.
+fn mic(seconds: u64, transcribe: bool) -> Result<()> {
+    let config = settings::load()?;
+    let microphone = Microphone::open(&config.audio).context("opening the microphone")?;
+    println!("  device  {} ({} Hz, {} ch)", microphone.name(), microphone.sample_rate(), microphone.channels());
+    println!("\n  recording for {seconds}s \u{2014} say something\n");
+
+    microphone.begin();
+    let mut peak = 0.0f32;
+    for _ in 0..(seconds * 20) {
+        std::thread::sleep(Duration::from_millis(50));
+        let level = microphone.level();
+        peak = peak.max(level);
+        let cells = (level.clamp(0.0, 1.0) * 40.0).round() as usize;
+        eprint!("\r  {}{}", "\u{2588}".repeat(cells), "\u{2591}".repeat(40 - cells));
+    }
+    eprintln!();
+
+    let capture = microphone.finish().context("finishing the recording")?;
+    let heard = capture.samples.iter().fold(0.0f32, |m, s| m.max(s.abs()));
+    println!(
+        "\n  captured {:.2}s at 16 kHz, peak sample {heard:.3}, peak level {peak:.3}",
+        capture.duration.as_secs_f32()
+    );
+
+    if heard < 0.005 {
+        println!("\n  \u{2717} the microphone produced silence.");
+        println!("      \u{2192} pick a device with audio.device in the config; `murmur devices` lists them");
+        println!("      \u{2192} check the input is not muted, and that its level is up");
+        anyhow::bail!("no audio captured");
+    }
+    println!("  \u{2713} audio captured");
+
+    if transcribe {
+        let mut model = transcriber(&config, false)?;
+        let transcript = model.transcribe(&capture.samples)?;
+        println!("\n  {:?}\n", transcript.text);
+        if transcript.text.trim().is_empty() {
+            println!("  \u{2717} audio was captured but transcribed to nothing.");
+            println!("      \u{2192} speak closer to the microphone, or raise its input level");
+        }
+    }
+    Ok(())
 }
 
 fn devices() -> Result<()> {

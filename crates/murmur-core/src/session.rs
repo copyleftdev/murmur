@@ -208,8 +208,15 @@ impl Session {
         vec![Command::StopCapture { id }, Command::Hud(Hud::Thinking)]
     }
 
+    /// Live text is only ever shown *while capturing*.
+    ///
+    /// A partial pass started before the key came up can finish after it, and
+    /// showing it then repaints a stale guess over "transcribing…" — or worse,
+    /// over the final text. The utterance id is not enough to catch this,
+    /// because it is still the current utterance; the phase is what matters.
     fn on_partial(&mut self, id: UtteranceId, text: &str) -> Vec<Command> {
-        if self.current_id() == Some(id) && !text.is_empty() {
+        let capturing = matches!(self.phase, Phase::Capturing { id: current, .. } if current == id);
+        if capturing && !text.is_empty() {
             vec![Command::Hud(Hud::Partial { text: text.to_owned() })]
         } else {
             Vec::new()
@@ -393,6 +400,38 @@ mod tests {
         let out = s.handle(Event::Final { at: Millis(1_040), id: 1, text: String::new() });
         assert_eq!(out, vec![Command::Hud(Hud::Hidden)]);
         assert_eq!(s.phase(), Phase::Idle);
+    }
+
+    #[test]
+    fn live_text_is_shown_while_capturing() {
+        let mut s = session();
+        s.handle(Event::TriggerDown(Millis(0)));
+        let out = s.handle(Event::Partial { at: Millis(300), id: 1, text: "hello".into() });
+        assert_eq!(out, vec![Command::Hud(Hud::Partial { text: "hello".into() })]);
+    }
+
+    #[test]
+    fn live_text_arriving_after_the_key_is_released_is_discarded() {
+        let mut s = session();
+        s.handle(Event::TriggerDown(Millis(0)));
+        s.handle(Event::TriggerUp(Millis(1_000)));
+
+        // Same utterance, but the user has stopped talking: a partial that was
+        // in flight would otherwise repaint a half-finished guess over the
+        // "transcribing" state, and then over the final text.
+        let out = s.handle(Event::Partial { at: Millis(1_010), id: 1, text: "half a gue".into() });
+        assert!(out.is_empty(), "a stale partial was shown: {out:?}");
+    }
+
+    #[test]
+    fn live_text_arriving_during_injection_is_discarded() {
+        let mut s = session();
+        s.handle(Event::TriggerDown(Millis(0)));
+        s.handle(Event::TriggerUp(Millis(1_000)));
+        s.handle(Event::Final { at: Millis(1_040), id: 1, text: "done".into() });
+
+        let out = s.handle(Event::Partial { at: Millis(1_050), id: 1, text: "don".into() });
+        assert!(out.is_empty(), "a partial overwrote the final text: {out:?}");
     }
 
     #[test]

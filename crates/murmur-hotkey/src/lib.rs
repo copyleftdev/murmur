@@ -100,6 +100,63 @@ pub fn watch(key: evdev::KeyCode) -> Result<Receiver<TriggerEvent>> {
     Ok(rx)
 }
 
+/// Report every key on every readable keyboard.
+///
+/// The diagnostic behind `murmur keys`: when a trigger "does nothing", the first
+/// question is whether the key is reaching Murmur at all, and the second is what
+/// that key is actually called.
+///
+/// # Errors
+/// Fails if no readable keyboard exists at all.
+pub fn watch_all() -> Result<Receiver<(evdev::KeyCode, Edge)>> {
+    let devices: Vec<(std::path::PathBuf, evdev::Device)> = evdev::enumerate()
+        .filter(|(_, device)| device.name() != Some(SELF_DEVICE))
+        .filter(|(_, device)| device.supported_keys().is_some())
+        .collect();
+
+    if devices.is_empty() {
+        return Err(HotkeyError::NoDevice("any key".into()));
+    }
+
+    let (tx, rx) = channel();
+    for (path, mut device) in devices {
+        let tx = tx.clone();
+        std::thread::Builder::new()
+            .name(format!("murmur-keys:{}", path.display()))
+            .spawn(move || {
+                loop {
+                    let Ok(events) = device.fetch_events() else { return };
+                    for event in events {
+                        if let evdev::EventSummary::Key(_, code, value) = event.destructure() {
+                            let edge = match value {
+                                1 => Edge::Down,
+                                0 => Edge::Up,
+                                _ => continue,
+                            };
+                            if tx.send((code, edge)).is_err() {
+                                return;
+                            }
+                        }
+                    }
+                }
+            })
+            .ok();
+    }
+    Ok(rx)
+}
+
+/// Names of the keyboards Murmur can read, for diagnostics.
+#[must_use]
+pub fn readable_keyboards(key: evdev::KeyCode) -> Vec<String> {
+    evdev::enumerate()
+        .filter(|(_, device)| device.name() != Some(SELF_DEVICE))
+        .filter(|(_, device)| device.supported_keys().is_some_and(|keys| keys.contains(key)))
+        .map(|(path, device)| {
+            format!("{} ({})", device.name().unwrap_or("unnamed"), path.display())
+        })
+        .collect()
+}
+
 fn read_loop(
     mut device: evdev::Device,
     key: evdev::KeyCode,
