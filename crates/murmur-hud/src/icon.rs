@@ -276,6 +276,17 @@ mod tests {
         }
     }
 
+    /// The packaged icon is a file, and files go stale.
+    #[test]
+    fn the_installed_icon_matches_what_the_code_draws() {
+        let packaged = include_str!("../../../packaging/murmur.svg");
+        assert_eq!(
+            packaged,
+            svg(),
+            "packaging/murmur.svg is out of date; regenerate it with `murmur-hud --install`"
+        );
+    }
+
     #[test]
     fn the_vector_mark_has_a_bar_for_every_pixel_bar() {
         let svg = svg();

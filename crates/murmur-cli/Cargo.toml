@@ -25,6 +25,7 @@ toml = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 hound = "3"
+ureq = "3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 evdev = "0.13"
@@ -36,3 +37,60 @@ tensorrt = ["murmur-asr/tensorrt"]
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
+
+# One package holds both binaries: the overlay and the command line are the same
+# product, and splitting them would only make `murmur hud` fail for half of users.
+[package.metadata.deb]
+name = "murmur"
+maintainer = "copyleftdev"
+copyright = "Apache-2.0"
+section = "sound"
+priority = "optional"
+extended-description = """
+Voice typing that never leaves your machine. Hold a key, speak, release, and the
+text lands wherever your cursor already is.
+
+Transcription runs locally on NVIDIA Parakeet through ONNX Runtime. No audio
+leaves the computer, there is no account, and there is nothing to subscribe to.
+
+Run `murmur models pull` once after installing to fetch the speech model, and
+`murmur doctor` to check the machine can run it."""
+# ONNX Runtime is linked statically, so the only hard dependency is ALSA. The
+# rest are opened at runtime by the overlay's renderer and are listed as
+# recommendations, because the command line works without any of them.
+depends = "libc6, libgcc-s1, libstdc++6, libasound2t64 | libasound2"
+recommends = "libxkbcommon0, libwayland-client0, libx11-6, libgl1, libvulkan1"
+assets = [
+    ["../../target/release/murmur", "usr/bin/", "755"],
+    ["../../target/release/murmur-hud", "usr/bin/", "755"],
+    ["../../packaging/murmur.desktop", "usr/share/applications/", "644"],
+    ["../../packaging/murmur.svg", "usr/share/icons/hicolor/scalable/apps/", "644"],
+    ["../../packaging/70-murmur-uinput.rules", "usr/lib/udev/rules.d/", "644"],
+    ["../../README.md", "usr/share/doc/murmur/README.md", "644"],
+]
+
+[package.metadata.generate-rpm]
+name = "murmur"
+summary = "Local-first voice typing that never leaves your machine"
+license = "Apache-2.0"
+# Named rather than auto-detected: the overlay dlopens its renderer, so an
+# automatic scan of ELF dependencies would miss everything the GUI needs.
+auto-req = "no"
+assets = [
+    { source = "../../target/release/murmur", dest = "/usr/bin/murmur", mode = "755" },
+    { source = "../../target/release/murmur-hud", dest = "/usr/bin/murmur-hud", mode = "755" },
+    { source = "../../packaging/murmur.desktop", dest = "/usr/share/applications/murmur.desktop", mode = "644" },
+    { source = "../../packaging/murmur.svg", dest = "/usr/share/icons/hicolor/scalable/apps/murmur.svg", mode = "644" },
+    { source = "../../packaging/70-murmur-uinput.rules", dest = "/usr/lib/udev/rules.d/70-murmur-uinput.rules", mode = "644" },
+    { source = "../../README.md", dest = "/usr/share/doc/murmur/README.md", mode = "644" },
+]
+
+[package.metadata.generate-rpm.requires]
+alsa-lib = "*"
+
+[package.metadata.generate-rpm.recommends]
+libxkbcommon = "*"
+libwayland-client = "*"
+libX11 = "*"
+mesa-libGL = "*"
+vulkan-loader = "*"

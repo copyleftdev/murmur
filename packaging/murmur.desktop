@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Murmur
+GenericName=Voice Typing
+Comment=Local-first voice typing that never leaves your machine
+Exec=/usr/bin/murmur-hud
+Icon=murmur
+Terminal=false
+Categories=Utility;Accessibility;
+Keywords=dictation;speech;voice;transcription;
+StartupWMClass=murmur

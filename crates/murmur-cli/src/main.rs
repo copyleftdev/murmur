@@ -1,3 +1,4 @@
+mod models;
 mod selftest;
 mod settings;
 mod terminal;
@@ -21,6 +22,18 @@ use std::time::Duration;
 struct Cli {
     #[command(subcommand)]
     command: Command,
+}
+
+#[derive(Subcommand)]
+enum ModelAction {
+    /// Fetch the weights into the configured model directory.
+    Pull {
+        /// Which weights: auto, fp32 or int8. Auto follows the hardware.
+        #[arg(long, default_value = "auto")]
+        precision: String,
+    },
+    /// Show which models are installed, and which would be used.
+    List,
 }
 
 #[derive(Subcommand)]
@@ -59,6 +72,11 @@ enum Command {
         #[arg(long)]
         stream: bool,
     },
+    /// Download the speech model. Run this once after installing.
+    Models {
+        #[command(subcommand)]
+        action: ModelAction,
+    },
     /// Launch the overlay, which runs dictation with a visible HUD.
     Hud,
     /// Show key presses as Murmur sees them. Use it to pick a trigger key.
@@ -95,6 +113,7 @@ fn main() -> Result<()> {
         Command::Type { text, after } => type_text(&text.join(" "), after),
         Command::Transcribe { path, repeat, model, accelerator, stream } =>
             transcribe(&path, repeat, model.as_deref(), accelerator.as_deref(), stream),
+        Command::Models { action } => models_command(&action),
         Command::Hud => hud(),
         Command::Keys => keys(),
         Command::Mic { seconds, transcribe } => mic(seconds, transcribe),
@@ -424,6 +443,36 @@ fn accelerator_report(width: usize) {
     }
     #[cfg(not(feature = "cuda"))]
     println!("  \u{2022} {:width$}  CPU only (rebuild with --features cuda for GPU)", "accelerator");
+}
+
+fn models_command(action: &ModelAction) -> Result<()> {
+    let config = settings::load()?;
+    let root = settings::expand_home(&config.asr.model_dir);
+
+    match action {
+        ModelAction::Pull { precision } => {
+            let precision = match precision.as_str() {
+                "auto" => murmur_core::Precision::Auto,
+                "fp32" => murmur_core::Precision::Fp32,
+                "int8" => murmur_core::Precision::Int8,
+                other => anyhow::bail!("unknown precision {other:?}; use auto, fp32 or int8"),
+            };
+            models::pull(&root, precision, gpu_usable())?;
+            Ok(())
+        }
+        ModelAction::List => {
+            let variants = murmur_asr::models::discover(&root);
+            if variants.is_empty() {
+                println!("  no models under {}", root.display());
+                println!("  \u{2192} murmur models pull");
+                return Ok(());
+            }
+            for variant in &variants {
+                println!("  {:?}  {}", variant.kind, variant.dir.display());
+            }
+            Ok(())
+        }
+    }
 }
 
 /// Hand over to the overlay binary, which owns its own event loop.

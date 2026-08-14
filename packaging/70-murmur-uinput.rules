@@ -1,0 +1,15 @@
+# Murmur types what you dictate by creating a virtual keyboard through
+# /dev/uinput. The kernel gives that device to root alone by default, so this
+# hands it to the "input" group -- the same group that already owns the
+# keyboards Murmur reads the trigger key from.
+#
+# Installing this rule grants nothing to anybody on its own. Membership of the
+# group is the actual grant, and it stays a deliberate act:
+#
+#     sudo usermod -aG input $USER     # then log out and back in
+#
+# Be aware of what that membership means: read access to /dev/input/event*
+# is the ability to read every keystroke on this machine. Murmur needs it to
+# know when the trigger key is held, and cannot work without it. `murmur doctor`
+# reports whether the access is in place.
+KERNEL=="uinput", SUBSYSTEM=="misc", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"

@@ -207,6 +207,37 @@ and reports the device it actually got:
 model  parakeet-tdt-0.6b-v3 (int8) on cpu (cuda registration failed)
 ```
 
+## Install
+
+Packages carry both binaries, a desktop entry, the icon, and the udev rule that
+makes `/dev/uinput` reachable.
+
+```sh
+./packaging/build.sh                 # builds .deb and .rpm into target/packages
+
+sudo apt install ./target/packages/murmur_0.1.0-1_amd64.deb
+sudo dnf install ./target/packages/murmur-0.1.0-1.x86_64.rpm
+```
+
+Then, once:
+
+```sh
+sudo usermod -aG input $USER   # log out and back in
+murmur models pull             # fetches the speech model
+murmur doctor                  # confirms the machine can run it
+```
+
+The group membership is left as a deliberate step rather than done by the
+package. Read access to `/dev/input/event*` is the ability to read every
+keystroke on the machine — Murmur needs it to know when the trigger key is held,
+and no package should grant that quietly on your behalf.
+
+Packages are built CPU-only. ONNX Runtime's CUDA provider is linked against a
+particular CUDA major version and ships as shared objects that are not ours to
+redistribute, so a packaged Murmur transcribes on the CPU — fast enough at 23x
+realtime — and GPU users build with `--features cuda` and supply the runtime as
+described under [GPU](#gpu).
+
 ## Try it
 
 ```sh
