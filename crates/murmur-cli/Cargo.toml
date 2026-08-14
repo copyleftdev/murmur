@@ -1,6 +1,6 @@
 [package]
 name = "murmur-cli"
-description = "Command-line surface for Murmur: diagnostics, self-tests, and one-shot injection."
+description = "Local-first voice typing that never leaves your machine"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -47,14 +47,11 @@ copyright = "Apache-2.0"
 section = "sound"
 priority = "optional"
 extended-description = """
-Voice typing that never leaves your machine. Hold a key, speak, release, and the
-text lands wherever your cursor already is.
-
-Transcription runs locally on NVIDIA Parakeet through ONNX Runtime. No audio
-leaves the computer, there is no account, and there is nothing to subscribe to.
-
-Run `murmur models pull` once after installing to fetch the speech model, and
-`murmur doctor` to check the machine can run it."""
+Voice typing that never leaves your machine. Hold a key, speak, release, and the text lands wherever your cursor already is.
+.
+Transcription runs locally on NVIDIA Parakeet through ONNX Runtime. No audio leaves the computer, there is no account, and there is nothing to subscribe to.
+.
+Run `murmur models pull` once after installing to fetch the speech model, and `murmur doctor` to check the machine can run it. Dictation needs read access to your keyboard, so you will also need to be in the "input" group."""
 # ONNX Runtime is linked statically, so the only hard dependency is ALSA. The
 # rest are opened at runtime by the overlay's renderer and are listed as
 # recommendations, because the command line works without any of them.
