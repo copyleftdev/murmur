@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104.6 100.0" width="104.6" height="100.0" role="img" aria-label="Murmur">
+  <title>Murmur</title>
+  <g fill="currentColor">
+    <rect x="0.00" y="23.28" width="9.73" height="53.44" rx="4.87"/>
+    <rect x="15.81" y="9.67" width="9.73" height="80.65" rx="4.87"/>
+    <rect x="31.62" y="2.38" width="9.73" height="95.24" rx="4.87"/>
+    <rect x="47.43" y="0.00" width="9.73" height="100.00" rx="4.87"/>
+    <rect x="63.24" y="2.38" width="9.73" height="95.24" rx="4.87"/>
+    <rect x="79.05" y="9.67" width="9.73" height="80.65" rx="4.87"/>
+    <rect x="94.86" y="23.28" width="9.73" height="53.44" rx="4.87"/>
+  </g>
+</svg>

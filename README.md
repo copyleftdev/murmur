@@ -1,6 +1,10 @@
 # Murmur
 
 [![Tip in tokens](https://img.shields.io/badge/tip%20in-tokens-6f42c1)](https://tokentip.to/@copyleftdev)
+[![ci](https://github.com/copyleftdev/murmur/actions/workflows/ci.yml/badge.svg)](https://github.com/copyleftdev/murmur/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/copyleftdev/murmur)](https://github.com/copyleftdev/murmur/releases/latest)
+
+**[murmur.dev site →](https://copyleftdev.github.io/murmur/)**
 
 Voice typing that never leaves your machine. Hold a key, speak, release — the
 text lands wherever your cursor already is.
