@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The hard part of local voice typing isn't the model — Murmur</title>
+<meta name="description" content="Speech recognition is solved and fast. Getting the words into the window you are looking at is where Linux fights you: GNOME cannot paste, evdev cannot swallow one key, and an overlay that takes focus types into itself.">
+<link rel="canonical" href="https://copyleftdev.github.io/murmur/wayland-typing.html">
+<meta name="theme-color" content="#08090d">
+<meta name="color-scheme" content="dark">
+<meta name="author" content="copyleftdev">
+<meta name="keywords" content="wayland,gnome,mutter,uinput,evdev,clipboard,wlr-data-control,ext-data-control,layer shell,xdg-desktop-portal,voice typing,dictation,linux,synthetic input">
+
+<link rel="icon" href="brand/murmur-icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="brand/icon-180.png">
+
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Murmur">
+<meta property="og:locale" content="en_GB">
+<meta property="og:url" content="https://copyleftdev.github.io/murmur/wayland-typing.html">
+<meta property="og:title" content="The hard part of local voice typing isn't the model">
+<meta property="og:description" content="Speech recognition is solved. Typing the result into the window you are looking at is where Linux fights you — five walls, and what actually gets through them.">
+<meta property="og:image" content="https://copyleftdev.github.io/murmur/brand/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Murmur — voice typing that never leaves your machine.">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="The hard part of local voice typing isn't the model">
+<meta name="twitter:description" content="GNOME cannot paste, evdev cannot swallow one key, and an overlay that takes focus types into itself.">
+<meta name="twitter:image" content="https://copyleftdev.github.io/murmur/brand/og.png">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "The hard part of local voice typing isn't the model",
+  "description": "Speech recognition is solved and fast. Getting the words into the window you are looking at is where Linux fights you.",
+  "url": "https://copyleftdev.github.io/murmur/wayland-typing.html",
+  "image": "https://copyleftdev.github.io/murmur/brand/og.png",
+  "author": { "@type": "Person", "name": "copyleftdev", "url": "https://github.com/copyleftdev" },
+  "publisher": { "@type": "Person", "name": "copyleftdev" },
+  "inLanguage": "en-GB",
+  "isAccessibleForFree": true,
+  "about": ["Wayland", "GNOME", "Linux input", "Speech recognition", "Desktop automation"],
+  "mainEntityOfPage": "https://copyleftdev.github.io/murmur/wayland-typing.html"
+}
+</script>
+<style>
+:root{
+  --bg:#08090d; --surface:#101219; --line:#232736;
+  --ink:#eef0f3; --muted:#8b91a3; --faint:#7f8598;
+  --teal:#5cdbb5; --violet:#8f9cff; --amber:#fbc25c;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,"JetBrains Mono","Fira Code",Menlo,Consolas,monospace;
+  --sans:Inter,"Inter Display",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+  line-height:1.72;-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:radial-gradient(52rem 34rem at 14% -12%,rgba(92,219,181,.10),transparent 60%),
+             radial-gradient(44rem 30rem at 90% 2%,rgba(143,156,255,.08),transparent 62%)}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px;position:relative;z-index:1}
+.col{max-width:70ch;margin:0 auto}
+a{color:var(--teal)}
+nav{position:sticky;top:0;z-index:20;backdrop-filter:blur(14px);background:rgba(8,9,13,.72);
+  border-bottom:1px solid var(--line)}
+.nav{display:flex;align-items:center;gap:20px;height:64px}
+.nav img{height:24px;width:auto;display:block}
+.nav .spacer{flex:1}
+.nav a{color:var(--muted);text-decoration:none;font-size:.92rem;min-height:24px;
+  display:inline-flex;align-items:center}
+.nav a:hover{color:var(--ink)}
+:focus-visible{outline:2px solid var(--teal);outline-offset:3px;border-radius:4px}
+.skip{position:absolute;left:-9999px;background:var(--teal);color:#05221b;padding:12px 18px;font-weight:600}
+.skip:focus{left:0}
+
+header{padding:clamp(48px,8vw,92px) 0 26px}
+.kicker{font-family:var(--mono);font-size:.76rem;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--teal);margin-bottom:16px}
+h1{font-size:clamp(2.1rem,5vw,3.3rem);font-weight:800;letter-spacing:-.025em;line-height:1.1;margin:0}
+.stand{font-size:clamp(1.08rem,2vw,1.3rem);color:var(--muted);margin-top:24px}
+.by{margin-top:26px;padding-top:20px;border-top:1px solid var(--line);
+  color:var(--faint);font-size:.88rem;display:flex;flex-wrap:wrap;gap:16px}
+
+article{padding-bottom:70px}
+h2{font-size:clamp(1.4rem,3vw,1.85rem);font-weight:700;letter-spacing:-.02em;
+  margin:56px 0 6px;scroll-margin-top:80px}
+h2 .num{font-family:var(--mono);font-size:.85rem;color:var(--teal);display:block;
+  margin-bottom:8px;letter-spacing:.1em}
+h3{font-size:1.12rem;margin:34px 0 4px}
+p{margin:16px 0}
+.lead{color:var(--muted)}
+ul{padding-left:20px;margin:16px 0}
+li{margin:9px 0}
+code{font-family:var(--mono);font-size:.88em;background:#0d0f15;border:1px solid var(--line);
+  border-radius:5px;padding:1px 6px}
+pre{background:#0a0b10;border:1px solid var(--line);border-radius:12px;padding:17px 18px;
+  overflow-x:auto;font-family:var(--mono);font-size:.83rem;line-height:1.7;margin:22px 0}
+pre code{background:none;border:none;padding:0;font-size:inherit}
+.c{color:var(--faint)}
+.ok{color:var(--teal)}
+.no{color:#fb7a7a}
+blockquote{margin:26px 0;padding:18px 22px;background:var(--surface);border-left:3px solid var(--teal);
+  border-radius:0 12px 12px 0;color:var(--muted)}
+blockquote p{margin:0}
+.note{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin:26px 0}
+.note b{color:var(--amber)}
+figure{margin:26px 0}
+figcaption{color:var(--faint);font-size:.85rem;margin-top:10px}
+table{border-collapse:collapse;width:100%;margin:22px 0;font-size:.92rem}
+th,td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--line)}
+th{font-size:.74rem;text-transform:uppercase;letter-spacing:.08em;color:var(--faint)}
+td.num{font-family:var(--mono)}
+.end{margin-top:64px;padding:28px;background:var(--surface);border:1px solid var(--line);border-radius:16px}
+.end a{font-weight:600}
+footer{border-top:1px solid var(--line);padding:40px 0 60px;color:var(--faint);font-size:.87rem}
+footer a{color:var(--muted);text-decoration:underline;text-underline-offset:3px;
+  display:inline-block;padding:4px 0;min-height:24px}
+footer a:hover{color:var(--teal)}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<a class="skip" href="#start">Skip to content</a>
+<nav><div class="wrap nav">
+  <a href="./" aria-label="Murmur home"><img src="brand/murmur-logo.svg" alt="Murmur" width="130" height="24"></a>
+  <div class="spacer"></div>
+  <a href="./">Home</a>
+  <a href="https://github.com/copyleftdev/murmur">GitHub</a>
+</div></nav>
+
+<main>
+<header><div class="wrap col">
+  <div class="kicker">Engineering notes</div>
+  <h1>The hard part of local voice typing isn&rsquo;t the model.</h1>
+  <p class="stand">Speech recognition is solved, offline, and fast enough to be uninteresting.
+    Getting the words into the window you are actually looking at is where Linux fights you —
+    and on GNOME, the approach everybody uses does not work at all.</p>
+  <div class="by">
+    <span>Written while building <a href="./">Murmur</a></span>
+    <span>Measured on GNOME Shell 49 · Wayland · Ubuntu 25.10</span>
+  </div>
+</div></header>
+
+<article id="start"><div class="wrap col">
+
+<p class="lead">I wanted dictation on Linux. Not a web page with a microphone button —
+the thing where you hold a key, talk, let go, and the words appear in whatever you were
+already typing into. That product exists and is good on macOS and Windows. On Linux it
+mostly doesn&rsquo;t.</p>
+
+<p>I assumed the reason was the model. It is not. I had transcription working in an
+afternoon, and the remaining fortnight went entirely on the last eight inches: moving text
+from my process into someone else&rsquo;s window.</p>
+
+<h2><span class="num">01</span>The easy part, first</h2>
+
+<p>NVIDIA Parakeet TDT runs offline through ONNX Runtime and transcribes eleven seconds of
+speech in <b>36&nbsp;milliseconds</b> on a consumer GPU — about 307&times; faster than real
+time. It punctuates and capitalises without help. There is no cloud in the path and no
+account to make.</p>
+
+<pre><code><span class="c">$ murmur transcribe assets/jfk.wav --repeat 5</span>
+  model  parakeet-tdt-0.6b-v3 on cuda
+  audio  11.00s
+  warm   35.8ms median of 5 (307x realtime)
+
+And so, my fellow Americans, ask not what your country can do for you.
+Ask what you can do for your country.</code></pre>
+
+<p>That is the whole machine-learning story. Everything below is about the other end.</p>
+
+<h2><span class="num">02</span>The obvious approach does not work on GNOME</h2>
+
+<p>Every dictation tool does the same thing: put the text on the clipboard, synthesise
+<code>Ctrl+V</code>, restore the clipboard. It is fast, it is Unicode-exact, and it works
+everywhere.</p>
+
+<p>It cannot be done on GNOME. Setting the clipboard from a process that does not hold
+keyboard focus requires a data-control protocol, and mutter implements neither of the two
+that exist:</p>
+
+<pre><code><span class="c">$ murmur doctor</span>
+  <span class="ok">✓</span> uinput     /dev/uinput is writable
+  <span class="no">✗</span> clipboard  unavailable (A required Wayland protocol
+               (ext-data-control, or wlr-data-control version 1)
+               is not supported by the compositor)</code></pre>
+
+<p>This is not a bug and it is not going to be fixed by waiting. Reading and writing the
+clipboard without focus is exactly the capability a keylogger wants, and GNOME has
+consistently declined to expose it. wlroots compositors and KDE support it; GNOME does not.</p>
+
+<blockquote><p>If your plan for getting text into an application is the clipboard, your plan
+does not work for most Linux desktop users.</p></blockquote>
+
+<h2><span class="num">03</span>What works is going underneath</h2>
+
+<p>The compositor controls Wayland. It does not control the kernel. <code>/dev/uinput</code>
+lets you create a virtual input device, and the events you emit arrive through evdev exactly
+like events from a real keyboard — libinput cannot distinguish them, so neither can the
+compositor, the toolkit, or the application.</p>
+
+<pre><code>let mut keys = AttributeSet::&lt;KeyCode&gt;::new();
+for key in keymap::all_keys() { keys.insert(key); }
+
+let device = VirtualDevice::builder()?
+    .name("Murmur virtual keyboard")
+    .with_keys(&amp;keys)?
+    .build()?;</code></pre>
+
+<p>Two things bite immediately.</p>
+
+<h3>The device takes time to exist</h3>
+<p>libinput discovers input devices through udev, asynchronously. Events emitted in the
+first few hundred milliseconds after creation are delivered to nobody. The fix is not a
+retry loop — it is to create the device once at start-up and hold it open for the life of
+the process, so the delay is paid before the user ever presses the key.</p>
+
+<h3>You emit scancodes, not characters</h3>
+<p>A keyboard does not send letters. It sends key positions, and the compositor applies the
+keymap. So you cannot type a character the user&rsquo;s layout has no key for, and you
+cannot know their layout from outside the compositor. For ASCII on a common layout this is
+fine. For <code>é</code>, or an emoji, or a Dvorak user, it is not.</p>
+
+<p>The escape hatch on GNOME is the <code>RemoteDesktop</code> portal, which takes keysyms
+rather than scancodes and therefore handles all of Unicode. It costs one consent dialogue,
+and a restore token makes that once rather than every launch. It is the right long-term
+path; uinput is what works with no prompt at all.</p>
+
+<h2><span class="num">04</span>You cannot swallow one key</h2>
+
+<p>Push-to-talk needs to know when a key goes down and when it comes up. Wayland has no
+portable global-hotkey API, and the one GNOME does offer reports <em>activation</em>, not
+edges — which is the wrong shape for hold-to-talk. Reading evdev directly gives you both
+edges on every keyboard in any session.</p>
+
+<p>What it does not give you is the ability to consume the key. <code>EVIOCGRAB</code> is
+all-or-nothing <em>per device</em>: you can take exclusive control of an entire keyboard, or
+none of it. There is no interface for &ldquo;give me this one key and pass the rest
+through&rdquo;.</p>
+
+<div class="note">
+<p><b>Consequence:</b> your trigger key must be one that does nothing on its own, because
+the application underneath will receive it too. That single kernel constraint is the entire
+reason the default is <b>Right Ctrl</b> — no desktop binds it alone, it is reachable
+one-handed, and an application that sees a bare Ctrl press does nothing with it.</p>
+</div>
+
+<p>It is also worth being honest about what reading evdev requires. Access to
+<code>/dev/input/event*</code> is the ability to read every keystroke on the machine. systemd
+grants that to the active session only for joysticks; keyboards need group membership. A
+package can ship the udev rule, but it should not quietly add you to the group — that is a
+decision, not an installation step.</p>
+
+<h2><span class="num">05</span>An overlay that takes focus types into itself</h2>
+
+<p>Then there is the small window showing what you are saying. It has one hard requirement:
+it must never take keyboard focus. Text is injected into whatever the compositor considers
+focused, so a HUD that steals focus receives its own dictation.</p>
+
+<p>Wayland gives a client no way to refuse focus. There is no
+<code>override-redirect</code>, no <code>_NET_WM_STATE</code>, no request that means
+&ldquo;show this but never activate it&rdquo;. The protocol built for exactly this —
+<code>wlr-layer-shell</code> — is not implemented by mutter, and there is no shipped
+standard replacement.</p>
+
+<p>Worse, a Wayland client cannot position its own window at all. <code>xdg-shell</code> has
+no concept of a coordinate; placement belongs entirely to the compositor, and GNOME places
+new windows in the middle of the screen. Which is precisely where an overlay must not be.</p>
+
+<p>The workaround is unglamorous and effective: run the overlay through XWayland, where
+absolute placement still works.</p>
+
+<pre><code><span class="c">// Only the driver is privileged; everything else is userspace.
+// Nothing else Murmur does touches Wayland: injection is uinput,
+// the trigger is evdev, and audio is ALSA.</span>
+if env::var_os("WAYLAND_DISPLAY").is_some() &amp;&amp; env::var_os("DISPLAY").is_some() {
+    unsafe { env::remove_var("WAYLAND_DISPLAY") };
+}</code></pre>
+
+<p>And then a second surprise: &ldquo;centred&rdquo; is not the centre. X11 reports two
+1920&times;1080 monitors as one 3840&times;1080 screen, so centring on it puts the bar exactly
+on the bezel. There is no monitor list available at placement time, but the panel count can
+be inferred by assuming a conventional aspect ratio and seeing how many fit — which leaves
+an ultrawide correctly undivided, because 3440&times;1440 is nowhere near twice 16:9.</p>
+
+<h2><span class="num">06</span>What this cost, in one table</h2>
+
+<table>
+<thead><tr><th>Wanted</th><th>Obvious way</th><th>What actually works</th></tr></thead>
+<tbody>
+<tr><td>Type into any app</td><td>Clipboard + paste</td><td class="num">uinput virtual keyboard</td></tr>
+<tr><td>Full Unicode</td><td>Clipboard</td><td class="num">RemoteDesktop portal keysyms</td></tr>
+<tr><td>Global push-to-talk</td><td>Compositor hotkey API</td><td class="num">evdev, key that is harmless alone</td></tr>
+<tr><td>Always-on-top overlay</td><td>layer-shell</td><td class="num">XWayland window, never re-mapped</td></tr>
+<tr><td>Place the overlay</td><td>Set its position</td><td class="num">XWayland, or let the user drag it</td></tr>
+</tbody>
+</table>
+
+<p>Not one row of that table is about speech.</p>
+
+<h2><span class="num">07</span>What I would want from Wayland</h2>
+
+<p>None of this is mutter being obstructive for its own sake. Every capability I wanted is
+also a capability malware wants, and the reason X11 made them easy is the reason X11 was
+indefensible. The gap is not that the answer is &ldquo;no&rdquo; — it is that there is no
+way to ask.</p>
+
+<ul>
+<li><b>A permissioned synthetic-input path</b> that is not remote desktop. The portal exists
+and works; it is scoped for screen sharing, and using it to type one sentence is a heavy tool
+for a small job.</li>
+<li><b>A window type that declares it will never accept focus.</b> Overlays, HUDs and
+on-screen keyboards all need it, and every one of them currently reaches for XWayland.</li>
+<li><b>Placement for those windows.</b> Not general client positioning — just enough for a
+surface that has already said it is an overlay.</li>
+</ul>
+
+<p>Until then: go below the compositor for input, sideways through XWayland for the window,
+and be honest in your documentation about what you are asking users to grant.</p>
+
+<div class="end">
+<p><b>Murmur</b> is the thing this came out of — local voice typing for Linux, in Rust, with
+NVIDIA Parakeet through ONNX Runtime. 36&nbsp;ms from key release to text, and nothing leaves
+the machine. Apache-2.0, <code>.deb</code> and <code>.rpm</code>.</p>
+<p style="margin-top:14px"><a href="./">murmur →</a> &nbsp;·&nbsp;
+<a href="https://github.com/copyleftdev/murmur">source on GitHub →</a></p>
+</div>
+
+</div></article>
+</main>
+
+<footer><div class="wrap col">
+  <div>Apache-2.0 · <a href="https://github.com/copyleftdev/murmur">copyleftdev/murmur</a>
+    · <a href="./">murmur</a></div>
+  <div style="margin-top:8px">Nothing on this page is loaded from anywhere else.</div>
+</div></footer>
+</body>
+</html>
