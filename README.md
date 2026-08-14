@@ -246,6 +246,27 @@ looks broken.
 Every state is covered by a snapshot test against a checked-in PNG, so a layout
 regression fails the build. Delete the image to accept a new design.
 
+### Putting it away
+
+```sh
+murmur hud --install   # desktop entry + icon, under ~/.local/share
+```
+
+While it runs, Murmur appears in the panel. Click the icon to hide or restore the
+overlay; its menu offers the same, plus Quit. In the bar itself, `–` hides and `×`
+quits — hiding leaves dictation working, which is the point of having somewhere to
+put it.
+
+GNOME dropped the legacy system tray but implements `StatusNotifierItem` through
+the AppIndicator extension Ubuntu enables by default, which is why this speaks
+that protocol directly rather than linking a toolkit. A desktop without it simply
+gets no panel icon; everything else still works.
+
+The icon is drawn, not shipped: the same waveform as the overlay, computed at
+whatever size is asked for — 64px ARGB for the panel, 256px RGBA for the window,
+and SVG for the icon theme. One geometry, no binary assets to drift out of step,
+and no image decoder in the dependency tree.
+
 ### Placing it, and closing it
 
 It sits bottom-centre by default, clear of the middle of the screen where you are

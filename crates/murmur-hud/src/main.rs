@@ -7,7 +7,9 @@
 //! implements no layer-shell protocol, so the window is created once at
 //! start-up, never mapped or unmapped, and simply changes what it draws.
 
+mod icon;
 mod theme;
+mod tray;
 mod worker;
 
 use anyhow::Context as _;
@@ -27,6 +29,9 @@ pub enum Message {
     Fatal(String),
     /// Move the overlay by dragging the bar.
     Drag,
+    /// Put the overlay away; it stays reachable from the panel icon.
+    Hide,
+    Show,
     Quit,
 }
 
@@ -37,6 +42,7 @@ struct Murmur {
     level: f32,
     partial: String,
     landed: Option<Landed>,
+    hidden: bool,
 }
 
 impl Murmur {
@@ -72,6 +78,16 @@ impl Murmur {
             Message::Drag => {
                 return iced::window::latest().and_then(iced::window::drag);
             }
+            Message::Hide => {
+                self.hidden = true;
+                return iced::window::latest()
+                    .and_then(|id| iced::window::set_mode(id, iced::window::Mode::Hidden));
+            }
+            Message::Show => {
+                self.hidden = false;
+                return iced::window::latest()
+                    .and_then(|id| iced::window::set_mode(id, iced::window::Mode::Windowed));
+            }
             Message::Quit => return iced::exit(),
         }
         Task::none()
@@ -103,7 +119,9 @@ impl Murmur {
         let draggable = mouse_area(row![body, Space::new().width(Length::Fill)].align_y(iced::Center))
             .on_press(Message::Drag);
 
-        container(row![draggable, close_button()].spacing(8).align_y(iced::Center))
+        container(
+            row![draggable, hide_button(), close_button()].spacing(4).align_y(iced::Center),
+        )
             .style(theme::pill)
             .padding([14, 16])
             .width(Length::Fill)
@@ -165,12 +183,24 @@ impl Murmur {
             }
         });
 
-        Subscription::batch([Subscription::run(engine), escape])
+        Subscription::batch([Subscription::run(engine), Subscription::run(panel), escape])
     }
 
     fn title(&self) -> String {
         "Murmur".to_owned()
     }
+}
+
+/// Put the overlay away without ending the session.
+///
+/// Distinct from closing: dictation keeps working while it is hidden, and the
+/// panel icon brings it back. Without a panel icon this would be a trapdoor,
+/// which is why the two were built together.
+fn hide_button() -> iced::widget::Button<'static, Message> {
+    button(text("\u{2013}").size(18).center())
+        .on_press(Message::Hide)
+        .padding([2, 8])
+        .style(theme::close)
 }
 
 /// The one control the overlay needs: a way to make it go away.
@@ -179,6 +209,13 @@ fn close_button() -> iced::widget::Button<'static, Message> {
         .on_press(Message::Quit)
         .padding([2, 8])
         .style(theme::close)
+}
+
+/// Publish the panel icon and report what the user does with it.
+fn panel() -> impl futures::Stream<Item = Message> {
+    iced::stream::channel(16, async |sender| {
+        tray::publish(sender);
+    })
 }
 
 /// Run the engine on its own thread, forwarding what it does to the interface.
@@ -308,6 +345,48 @@ fn prefer_positionable_backend() {
     }
 }
 
+/// Write a desktop entry and icon, so Murmur is an application rather than a
+/// binary you have to remember the path of.
+///
+/// Everything lands under the user's own data directory: no root, and removing
+/// the two files removes every trace.
+fn install() -> std::io::Result<()> {
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_default();
+    let data = std::env::var_os("XDG_DATA_HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| home.join(".local/share"));
+
+    let icons = data.join("icons/hicolor/scalable/apps");
+    std::fs::create_dir_all(&icons)?;
+    let icon_path = icons.join("murmur.svg");
+    std::fs::write(&icon_path, icon::svg())?;
+
+    let applications = data.join("applications");
+    std::fs::create_dir_all(&applications)?;
+    let exe = std::env::current_exe()?;
+    let entry = applications.join("murmur.desktop");
+    std::fs::write(
+        &entry,
+        format!(
+            "[Desktop Entry]\n\
+             Type=Application\n\
+             Name=Murmur\n\
+             Comment=Local-first voice typing that never leaves your machine\n\
+             Exec={}\n\
+             Icon=murmur\n\
+             Terminal=false\n\
+             Categories=Utility;AudioVideo;Accessibility;\n\
+             Keywords=dictation;speech;voice;transcription;\n\
+             StartupWMClass=murmur\n",
+            exe.display()
+        ),
+    )?;
+
+    println!("installed:\n  {}\n  {}", icon_path.display(), entry.display());
+    println!("\nMurmur now appears in your applications, and in the panel while running.");
+    Ok(())
+}
+
 fn main() -> iced::Result {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -318,9 +397,28 @@ fn main() -> iced::Result {
         .with_writer(std::io::stderr)
         .init();
 
+    if std::env::args().any(|arg| arg == "--install") {
+        if let Err(error) = install() {
+            eprintln!("could not install: {error}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+
     prefer_positionable_backend();
 
     iced::application(Murmur::default, Murmur::update, Murmur::view)
+        .window(iced::window::Settings {
+            icon: iced::window::icon::from_rgba(icon::rgba(256, true), 256, 256).ok(),
+            // Matches the basename of the desktop entry, which is how the shell
+            // ties a window to its name and icon. Without it the window reports
+            // an empty WM_CLASS and shows up as an anonymous box.
+            platform_specific: iced::window::settings::PlatformSpecific {
+                application_id: "murmur".to_owned(),
+                ..iced::window::settings::PlatformSpecific::default()
+            },
+            ..iced::window::Settings::default()
+        })
         .title(Murmur::title)
         .subscription(Murmur::subscription)
         .window_size(WINDOW)
