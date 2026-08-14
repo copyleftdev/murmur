@@ -1,0 +1,38 @@
+[package]
+name = "murmur-hud"
+description = "The overlay: what Murmur is doing, while it does it."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "murmur-hud"
+path = "src/main.rs"
+
+[features]
+default = []
+cuda = ["murmur-asr/cuda"]
+
+[dependencies]
+murmur-core = { workspace = true }
+murmur-asr = { workspace = true }
+murmur-audio = { workspace = true }
+murmur-engine = { workspace = true }
+murmur-hotkey = { workspace = true }
+murmur-inject = { workspace = true }
+anyhow = { workspace = true }
+toml = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+iced = "0.14"
+futures = "0.3"
+
+[dev-dependencies]
+iced_test = "0.14"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"

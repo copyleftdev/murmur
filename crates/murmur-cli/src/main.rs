@@ -59,6 +59,8 @@ enum Command {
         #[arg(long)]
         stream: bool,
     },
+    /// Launch the overlay, which runs dictation with a visible HUD.
+    Hud,
     /// Show key presses as Murmur sees them. Use it to pick a trigger key.
     Keys,
     /// Record from the microphone and report whether anything was heard.
@@ -93,6 +95,7 @@ fn main() -> Result<()> {
         Command::Type { text, after } => type_text(&text.join(" "), after),
         Command::Transcribe { path, repeat, model, accelerator, stream } =>
             transcribe(&path, repeat, model.as_deref(), accelerator.as_deref(), stream),
+        Command::Hud => hud(),
         Command::Keys => keys(),
         Command::Mic { seconds, transcribe } => mic(seconds, transcribe),
         Command::Devices => devices(),
@@ -421,6 +424,26 @@ fn accelerator_report(width: usize) {
     }
     #[cfg(not(feature = "cuda"))]
     println!("  \u{2022} {:width$}  CPU only (rebuild with --features cuda for GPU)", "accelerator");
+}
+
+/// Hand over to the overlay binary, which owns its own event loop.
+///
+/// A separate process rather than a flag: iced must own the main thread, and a
+/// GUI toolkit linked into `murmur doctor` would make every diagnostic depend on
+/// a working GPU.
+fn hud() -> Result<()> {
+    use std::os::unix::process::CommandExt as _;
+
+    let beside_us = std::env::current_exe().ok().and_then(|exe| {
+        let candidate = exe.with_file_name("murmur-hud");
+        candidate.exists().then_some(candidate)
+    });
+    let program = beside_us.unwrap_or_else(|| std::path::PathBuf::from("murmur-hud"));
+
+    // `exec` rather than spawn: the overlay *is* the session from here on, and
+    // an extra process in the middle only complicates signals and exit codes.
+    let error = std::process::Command::new(&program).exec();
+    Err(anyhow::Error::new(error).context(format!("launching {}", program.display())))
 }
 
 /// Print every key press, so a trigger that "does nothing" can be diagnosed.

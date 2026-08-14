@@ -54,9 +54,9 @@ Also working, with one important caveat:
 - **Live partial text** while you speak, produced by re-running the same batch
   model over the growing recording on a worker thread
 
-Not yet:
+- **An iced overlay** (`murmur hud`): state, level and live text in one bar
 
-- The iced overlay — the terminal surface stands in
+Not yet:
 - RemoteDesktop portal backend for full Unicode on GNOME
 - Optional Nemotron polish pass
 
@@ -229,6 +229,37 @@ realtime factor alongside the text, so a slow accelerator is visible immediately
 `listen --mock` runs the entire loop — trigger, capture, format, inject — with a
 scripted transcriber. Focus a text editor first: it really does type.
 
+## The overlay
+
+```sh
+murmur hud
+```
+
+![the overlay while speaking](crates/murmur-hud/snapshots/live-text-wgpu.png)
+
+One bar, one accent colour at a time — the colour *is* the state and the text
+only elaborates. The meter is shaped like a voice rather than a bar chart: bar
+heights follow a fixed raised-cosine profile scaled by a perceptual curve, since
+speech spends most of its time well below unity and a linear meter therefore
+looks broken.
+
+Every state is covered by a snapshot test against a checked-in PNG, so a layout
+regression fails the build. Delete the image to accept a new design.
+
+### Focus, and why the window never hides
+
+Text is injected into whichever window the compositor considers focused, so an
+overlay that took focus would type into itself. Wayland gives a client no way to
+refuse focus and GNOME implements no layer-shell protocol, so the window is
+created once at start-up and never mapped or unmapped again — it only changes
+what it draws. GNOME will focus it once when it appears; click into whatever you
+want to dictate into, and it stays out of the way after that.
+
+The engine runs on its own thread, because iced must own the main thread and a
+microphone cannot leave the thread that opened it. That split is also why the
+interface cannot stall dictation: the worst a slow frame can do is show stale
+text.
+
 ## Layout
 
 ```
@@ -238,7 +269,8 @@ murmur-asr      the Transcriber trait, and a scripted implementation
 murmur-hotkey   global push-to-talk via evdev
 murmur-inject   uinput virtual keyboard, clipboard, backend routing
 murmur-engine   the loop that performs core's commands and reports the facts
-murmur-cli      doctor, selftest, listen, devices, config
+murmur-cli      doctor, selftest, listen, keys, mic, devices, config
+murmur-hud      the iced overlay
 ```
 
 The core is a pure function of its event log. Every device is behind a trait
