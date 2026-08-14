@@ -176,7 +176,11 @@ mod tests {
         values.push(4_000);
         let stats = stats_of(&values);
         assert_eq!(stats.release_to_text(50.0), Some(Millis(100)));
-        assert_eq!(stats.release_to_text(100.0), Some(Millis(4_000)), "outlier must survive");
+        assert_eq!(
+            stats.release_to_text(100.0),
+            Some(Millis(4_000)),
+            "outlier must survive"
+        );
     }
 
     #[test]

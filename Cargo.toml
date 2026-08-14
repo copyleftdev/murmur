@@ -27,6 +27,19 @@ toml = "0.9"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+[workspace.lints.rust]
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+# Audio, graphics and geometry are float maths over integer counts. These casts
+# are the work, not a smell, and silencing them individually would bury the
+# lints that do matter.
+cast_precision_loss = "allow"
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+
 [profile.release]
 lto = "thin"
 codegen-units = 1

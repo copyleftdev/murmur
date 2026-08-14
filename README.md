@@ -365,6 +365,20 @@ The trigger defaults to Right Ctrl. That is not arbitrary: evdev cannot swallow
 a single key (`EVIOCGRAB` is all-or-nothing per device), so the push-to-talk key
 must be one that does nothing on its own.
 
+## Releasing
+
+Tagging is the whole flow:
+
+```sh
+git tag -a v0.1.0 -m "Murmur 0.1.0"
+git push --tags
+```
+
+CI builds the `.deb` and `.rpm` on every change, so packaging is never first
+tested during a release. The tag then builds them again, checksums them, and
+publishes a GitHub release. A tag that disagrees with the workspace version
+fails the run rather than publishing packages whose name contradicts their tag.
+
 ## Licence
 
 Apache-2.0

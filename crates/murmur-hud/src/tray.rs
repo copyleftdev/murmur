@@ -6,7 +6,7 @@
 //! can only kill.
 //!
 //! GNOME dropped the legacy system tray, but implements `StatusNotifierItem`
-//! through the AppIndicator extension that Ubuntu enables by default — which is
+//! through the `AppIndicator` extension that Ubuntu enables by default — which is
 //! why this speaks that protocol directly rather than linking a toolkit.
 
 use crate::{Message, icon};
@@ -28,7 +28,11 @@ pub struct Tray {
 
 impl Tray {
     pub fn new(to_interface: Sender<Message>) -> Self {
-        Self { to_interface, visible: true, listening: false }
+        Self {
+            to_interface,
+            visible: true,
+            listening: false,
+        }
     }
 
     fn send(&mut self, message: Message) {
@@ -67,7 +71,11 @@ impl ksni::Tray for Tray {
     /// and making them find it in a menu first is a wasted click.
     fn activate(&mut self, _x: i32, _y: i32) {
         self.visible = !self.visible;
-        let message = if self.visible { Message::Show } else { Message::Hide };
+        let message = if self.visible {
+            Message::Show
+        } else {
+            Message::Hide
+        };
         self.send(message);
     }
 
@@ -80,7 +88,11 @@ impl ksni::Tray for Tray {
                 checked: self.visible,
                 activate: Box::new(|this: &mut Self| {
                     this.visible = !this.visible;
-                    let message = if this.visible { Message::Show } else { Message::Hide };
+                    let message = if this.visible {
+                        Message::Show
+                    } else {
+                        Message::Hide
+                    };
                     this.send(message);
                 }),
                 ..CheckmarkItem::default()
@@ -172,7 +184,10 @@ mod tests {
         let icon = icons.first().expect("an icon");
         assert_eq!(icon.width, icon.height);
         assert_eq!(icon.data.len(), (icon.width * icon.height * 4) as usize);
-        assert!(icon.data.chunks_exact(4).any(|p| p[0] > 0), "the icon is fully transparent");
+        assert!(
+            icon.data.chunks_exact(4).any(|p| p[0] > 0),
+            "the icon is fully transparent"
+        );
     }
 
     #[test]

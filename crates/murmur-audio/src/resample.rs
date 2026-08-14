@@ -25,9 +25,14 @@ pub fn to_target(input: &[f32], rate: u32) -> Result<Vec<f32>, AudioError> {
         return Ok(Vec::new());
     }
 
-    let mut resampler =
-        Fft::<f32>::new(rate as usize, TARGET_SAMPLE_RATE as usize, CHUNK, 1, FixedSync::Input)
-            .map_err(|e| AudioError::Resample(e.to_string()))?;
+    let mut resampler = Fft::<f32>::new(
+        rate as usize,
+        TARGET_SAMPLE_RATE as usize,
+        CHUNK,
+        1,
+        FixedSync::Input,
+    )
+    .map_err(|e| AudioError::Resample(e.to_string()))?;
 
     let expected = expected_len(input.len(), rate);
     // Rubato writes whole chunks, so the buffer must have room to overshoot.
@@ -90,7 +95,9 @@ mod tests {
 
     fn sine(freq: f32, rate: u32, secs: f32) -> Vec<f32> {
         let n = (rate as f32 * secs) as usize;
-        (0..n).map(|i| (TAU * freq * i as f32 / rate as f32).sin()).collect()
+        (0..n)
+            .map(|i| (TAU * freq * i as f32 / rate as f32).sin())
+            .collect()
     }
 
     /// Frequency estimated from zero crossings — robust enough to prove the
@@ -154,7 +161,10 @@ mod tests {
         let input = sine(15_000.0, 48_000, 0.5);
         let out = to_target(&input, 48_000).unwrap();
         let energy: f32 = out.iter().map(|s| s * s).sum::<f32>() / out.len() as f32;
-        assert!(energy < 0.05, "aliased energy {energy} leaked into the 16 kHz band");
+        assert!(
+            energy < 0.05,
+            "aliased energy {energy} leaked into the 16 kHz band"
+        );
     }
 
     #[test]

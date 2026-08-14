@@ -63,7 +63,6 @@ pub fn registration_failures() -> usize {
     REGISTRATION_FAILURES.load(Ordering::Relaxed)
 }
 
-
 /// Where Murmur keeps a private CUDA runtime, if the system has none.
 #[must_use]
 pub fn bundled_dir() -> PathBuf {
@@ -142,8 +141,9 @@ pub fn device_count() -> Result<i32, String> {
     let count = unsafe {
         let init: libloading::os::unix::Symbol<unsafe extern "C" fn(u32) -> i32> =
             driver.get(b"cuInit\0").map_err(|e| e.to_string())?;
-        let get_count: libloading::os::unix::Symbol<unsafe extern "C" fn(*mut i32) -> i32> =
-            driver.get(b"cuDeviceGetCount\0").map_err(|e| e.to_string())?;
+        let get_count: libloading::os::unix::Symbol<unsafe extern "C" fn(*mut i32) -> i32> = driver
+            .get(b"cuDeviceGetCount\0")
+            .map_err(|e| e.to_string())?;
 
         let status = init(0);
         if status != 0 {

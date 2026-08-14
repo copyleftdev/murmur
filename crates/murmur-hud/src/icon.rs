@@ -6,6 +6,8 @@
 //! tree, and a tray icon that is crisp at every panel height rather than a
 //! scaled 22-pixel PNG.
 
+use std::fmt::Write as _;
+
 /// The accent colour, matching the overlay's listening state.
 const MARK: [u8; 3] = [92, 219, 181];
 /// The tile behind the mark, for places that expect a solid app icon.
@@ -38,7 +40,10 @@ fn bar(index: usize, extent: f32) -> (f32, f32) {
     // Clamped before the fractional power: `sin` can return a hair below zero
     // at the ends, and a negative base makes it `NaN`.
     let profile = (std::f32::consts::PI * position).sin().max(0.0).powf(0.6);
-    (left + index as f32 * (width + gap), extent * (BAR_MIN_HEIGHT + BAR_SWELL * profile))
+    (
+        left + index as f32 * (width + gap),
+        extent * (BAR_MIN_HEIGHT + BAR_SWELL * profile),
+    )
 }
 
 /// RGBA8 pixels for an icon `size` across.
@@ -78,7 +83,7 @@ pub fn rgba(size: u32, tile: bool) -> Vec<u8> {
     pixels
 }
 
-/// ARGB pixels, which is what the StatusNotifierItem specification asks for.
+/// ARGB pixels, which is what the `StatusNotifierItem` specification asks for.
 #[must_use]
 pub fn argb(size: u32, tile: bool) -> Vec<u8> {
     let mut pixels = rgba(size, tile);
@@ -155,7 +160,11 @@ fn blend(under: [u8; 3], over: [u8; 3], amount: f32) -> [u8; 3] {
             (f32::from(a) * (1.0 - amount) + f32::from(b) * amount).round() as u8
         }
     };
-    [mix(under[0], over[0]), mix(under[1], over[1]), mix(under[2], over[2])]
+    [
+        mix(under[0], over[0]),
+        mix(under[1], over[1]),
+        mix(under[2], over[2]),
+    ]
 }
 
 /// The same mark as scalable vector art, for the icon theme.
@@ -182,15 +191,16 @@ pub fn svg() -> String {
 
     for i in 0..BARS {
         let (x, height) = bar(i, extent);
-        out.push_str(&format!(
+        let _ = writeln!(
+            out,
             "  <rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{width:.2}\" height=\"{height:.2}\" \
-             rx=\"{radius:.2}\" fill=\"#{r:02x}{g:02x}{b:02x}\"/>\n",
+             rx=\"{radius:.2}\" fill=\"#{r:02x}{g:02x}{b:02x}\"/>",
             y = (extent - height) / 2.0,
             radius = width / 2.0,
             r = MARK[0],
             g = MARK[1],
             b = MARK[2],
-        ));
+        );
     }
     out.push_str("</svg>\n");
     out
@@ -216,7 +226,11 @@ mod tests {
     fn the_mark_is_drawn_through_the_middle() {
         let size = 64;
         let pixels = rgba(size, false);
-        assert_eq!(alpha_at(&pixels, size, size / 2, size / 2), 255, "the centre is empty");
+        assert_eq!(
+            alpha_at(&pixels, size, size / 2, size / 2),
+            255,
+            "the centre is empty"
+        );
     }
 
     #[test]
@@ -224,7 +238,11 @@ mod tests {
         let size = 64;
         let pixels = rgba(size, false);
         for (x, y) in [(0, 0), (size - 1, 0), (0, size - 1), (size - 1, size - 1)] {
-            assert_eq!(alpha_at(&pixels, size, x, y), 0, "corner {x},{y} was painted");
+            assert_eq!(
+                alpha_at(&pixels, size, x, y),
+                0,
+                "corner {x},{y} was painted"
+            );
         }
     }
 
@@ -232,7 +250,11 @@ mod tests {
     fn a_tiled_icon_is_rounded_rather_than_square() {
         let size = 64;
         let pixels = rgba(size, true);
-        assert_eq!(alpha_at(&pixels, size, 0, 0), 0, "the tile has square corners");
+        assert_eq!(
+            alpha_at(&pixels, size, 0, 0),
+            0,
+            "the tile has square corners"
+        );
         assert_eq!(alpha_at(&pixels, size, size / 2, size / 2), 255);
     }
 
@@ -241,7 +263,9 @@ mod tests {
         let size = 64;
         let pixels = rgba(size, false);
         let painted_rows = |column: u32| {
-            (0..size).filter(|y| alpha_at(&pixels, size, column, *y) > 128).count()
+            (0..size)
+                .filter(|y| alpha_at(&pixels, size, column, *y) > 128)
+                .count()
         };
         let centre = (0..size).map(painted_rows).max().unwrap_or(0);
         assert!(centre > 0, "nothing was drawn");
@@ -266,13 +290,19 @@ mod tests {
         let inset = extent * SLAB_INSET;
         for i in 0..BARS {
             let (x, height) = bar(i, extent);
-            assert!(x >= inset, "bar {i} starts at {x}, outside the tile at {inset}");
+            assert!(
+                x >= inset,
+                "bar {i} starts at {x}, outside the tile at {inset}"
+            );
             assert!(
                 x + extent * BAR_WIDTH <= extent - inset,
                 "bar {i} overhangs the right edge of the tile"
             );
             let top = (extent - height) / 2.0;
-            assert!(top >= inset && top + height <= extent - inset, "bar {i} overhangs vertically");
+            assert!(
+                top >= inset && top + height <= extent - inset,
+                "bar {i} overhangs vertically"
+            );
         }
     }
 
@@ -301,6 +331,9 @@ mod tests {
     fn tiny_sizes_still_draw_something() {
         let size = 16;
         let pixels = rgba(size, false);
-        assert!(pixels.chunks_exact(4).any(|p| p[3] > 0), "the mark vanished at {size}px");
+        assert!(
+            pixels.chunks_exact(4).any(|p| p[3] > 0),
+            "the mark vanished at {size}px"
+        );
     }
 }

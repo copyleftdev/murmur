@@ -70,7 +70,11 @@ pub fn restore(text: &str) -> Result<()> {
 /// # Errors
 /// Returns why it is unavailable, for `murmur doctor` to report verbatim.
 pub fn availability() -> std::result::Result<(), String> {
-    match paste::get_contents(ClipboardType::Regular, Seat::Unspecified, paste::MimeType::Text) {
+    match paste::get_contents(
+        ClipboardType::Regular,
+        Seat::Unspecified,
+        paste::MimeType::Text,
+    ) {
         Ok(_) => Ok(()),
         // An empty clipboard still proves the protocol is there.
         Err(paste::Error::NoSeats | paste::Error::ClipboardEmpty | paste::Error::NoMimeType) => {

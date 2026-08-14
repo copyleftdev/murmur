@@ -53,8 +53,11 @@ pub struct Variant {
 #[must_use]
 pub fn classify(dir: &Path) -> Option<(Family, Found)> {
     if dir.join("tokenizer.model").exists() && dir.join("encoder.onnx").exists() {
-        let kind =
-            if dir.join("encoder.onnx.data").exists() { Found::Fp32 } else { Found::Int8 };
+        let kind = if dir.join("encoder.onnx.data").exists() {
+            Found::Fp32
+        } else {
+            Found::Int8
+        };
         return Some((Family::NemotronStreaming, kind));
     }
     if dir.join("vocab.txt").exists() {
@@ -76,7 +79,11 @@ pub fn classify(dir: &Path) -> Option<(Family, Found)> {
 pub fn discover(root: &Path) -> Vec<Variant> {
     let mut found = Vec::new();
     if let Some((family, kind)) = classify(root) {
-        found.push(Variant { dir: root.to_path_buf(), kind, family });
+        found.push(Variant {
+            dir: root.to_path_buf(),
+            kind,
+            family,
+        });
     }
     if let Ok(entries) = std::fs::read_dir(root) {
         let mut dirs: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
@@ -115,7 +122,9 @@ pub fn choose(
         }
     };
     let of_family = || variants.iter().filter(|v| v.family == family);
-    of_family().find(|v| v.kind == preferred).or_else(|| of_family().next())
+    of_family()
+        .find(|v| v.kind == preferred)
+        .or_else(|| of_family().next())
 }
 
 #[cfg(test)]
@@ -123,45 +132,97 @@ mod tests {
     use super::*;
 
     fn fp32(dir: &str) -> Variant {
-        Variant { dir: PathBuf::from(dir), kind: Found::Fp32, family: Family::ParakeetTdt }
+        Variant {
+            dir: PathBuf::from(dir),
+            kind: Found::Fp32,
+            family: Family::ParakeetTdt,
+        }
     }
 
     fn int8(dir: &str) -> Variant {
-        Variant { dir: PathBuf::from(dir), kind: Found::Int8, family: Family::ParakeetTdt }
+        Variant {
+            dir: PathBuf::from(dir),
+            kind: Found::Int8,
+            family: Family::ParakeetTdt,
+        }
     }
 
     fn nemotron(dir: &str) -> Variant {
-        Variant { dir: PathBuf::from(dir), kind: Found::Fp32, family: Family::NemotronStreaming }
+        Variant {
+            dir: PathBuf::from(dir),
+            kind: Found::Fp32,
+            family: Family::NemotronStreaming,
+        }
     }
 
     #[test]
     fn a_gpu_gets_fp32_because_int8_has_no_cuda_kernels() {
         let both = [int8("a"), fp32("b")];
-        assert_eq!(choose(&both, true, Precision::Auto, Family::ParakeetTdt).unwrap().kind, Found::Fp32);
+        assert_eq!(
+            choose(&both, true, Precision::Auto, Family::ParakeetTdt)
+                .unwrap()
+                .kind,
+            Found::Fp32
+        );
     }
 
     #[test]
     fn without_a_gpu_int8_is_chosen_to_save_disk_and_memory() {
         let both = [fp32("a"), int8("b")];
-        assert_eq!(choose(&both, false, Precision::Auto, Family::ParakeetTdt).unwrap().kind, Found::Int8);
+        assert_eq!(
+            choose(&both, false, Precision::Auto, Family::ParakeetTdt)
+                .unwrap()
+                .kind,
+            Found::Int8
+        );
     }
 
     #[test]
     fn an_explicit_precision_overrides_the_hardware() {
         let both = [fp32("a"), int8("b")];
-        assert_eq!(choose(&both, true, Precision::Int8, Family::ParakeetTdt).unwrap().kind, Found::Int8);
-        assert_eq!(choose(&both, false, Precision::Fp32, Family::ParakeetTdt).unwrap().kind, Found::Fp32);
+        assert_eq!(
+            choose(&both, true, Precision::Int8, Family::ParakeetTdt)
+                .unwrap()
+                .kind,
+            Found::Int8
+        );
+        assert_eq!(
+            choose(&both, false, Precision::Fp32, Family::ParakeetTdt)
+                .unwrap()
+                .kind,
+            Found::Fp32
+        );
     }
 
     #[test]
     fn the_only_model_installed_is_used_whatever_was_preferred() {
         let only_int8 = [int8("a")];
-        assert_eq!(choose(&only_int8, true, Precision::Auto, Family::ParakeetTdt).unwrap().kind, Found::Int8);
-        assert_eq!(choose(&only_int8, true, Precision::Fp32, Family::ParakeetTdt).unwrap().kind, Found::Int8);
+        assert_eq!(
+            choose(&only_int8, true, Precision::Auto, Family::ParakeetTdt)
+                .unwrap()
+                .kind,
+            Found::Int8
+        );
+        assert_eq!(
+            choose(&only_int8, true, Precision::Fp32, Family::ParakeetTdt)
+                .unwrap()
+                .kind,
+            Found::Int8
+        );
 
         let only_fp32 = [fp32("a")];
-        assert_eq!(choose(&only_fp32, false, Precision::Auto, Family::ParakeetTdt).unwrap().kind, Found::Fp32);
-        assert_eq!(choose(&only_fp32, false, Precision::Int8, Family::ParakeetTdt).unwrap().kind, Found::Fp32);
+        assert_eq!(
+            choose(&only_fp32, false, Precision::Auto, Family::ParakeetTdt)
+                .unwrap()
+                .kind,
+            Found::Fp32
+        );
+        assert_eq!(
+            choose(&only_fp32, false, Precision::Int8, Family::ParakeetTdt)
+                .unwrap()
+                .kind,
+            Found::Fp32
+        );
     }
 
     #[test]
@@ -175,8 +236,12 @@ mod tests {
         let other = [int8("b"), fp32("a")];
         for gpu in [true, false] {
             assert_eq!(
-                choose(&one, gpu, Precision::Auto, Family::ParakeetTdt).unwrap().kind,
-                choose(&other, gpu, Precision::Auto, Family::ParakeetTdt).unwrap().kind,
+                choose(&one, gpu, Precision::Auto, Family::ParakeetTdt)
+                    .unwrap()
+                    .kind,
+                choose(&other, gpu, Precision::Auto, Family::ParakeetTdt)
+                    .unwrap()
+                    .kind,
                 "gpu={gpu}"
             );
         }
@@ -186,11 +251,15 @@ mod tests {
     fn a_family_never_selects_weights_belonging_to_the_other() {
         let mixed = [nemotron("n"), fp32("p"), int8("q")];
         assert_eq!(
-            choose(&mixed, true, Precision::Auto, Family::NemotronStreaming).unwrap().family,
+            choose(&mixed, true, Precision::Auto, Family::NemotronStreaming)
+                .unwrap()
+                .family,
             Family::NemotronStreaming
         );
         assert_eq!(
-            choose(&mixed, true, Precision::Auto, Family::ParakeetTdt).unwrap().family,
+            choose(&mixed, true, Precision::Auto, Family::ParakeetTdt)
+                .unwrap()
+                .family,
             Family::ParakeetTdt
         );
     }
@@ -199,7 +268,13 @@ mod tests {
     fn a_missing_family_chooses_nothing_rather_than_the_wrong_architecture() {
         let only_parakeet = [fp32("p")];
         assert!(
-            choose(&only_parakeet, true, Precision::Auto, Family::NemotronStreaming).is_none()
+            choose(
+                &only_parakeet,
+                true,
+                Precision::Auto,
+                Family::NemotronStreaming
+            )
+            .is_none()
         );
     }
 

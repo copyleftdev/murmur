@@ -1,0 +1,93 @@
+name: release
+
+# Tagging is the whole trigger. `git tag -a v0.1.0 -m ... && git push --tags`
+# builds the packages, checksums them, and publishes a release — so a release is
+# never a thing somebody assembled by hand on their own machine.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build a release for"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: packaging tools
+        run: cargo install cargo-deb cargo-generate-rpm --locked
+
+      # The tag must agree with the version the packages will carry, or users
+      # end up with murmur_0.1.0 published under v0.2.0.
+      - name: tag matches the crate version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          if [ "$tag" != "$version" ]; then
+            echo "tag $GITHUB_REF_NAME does not match workspace version $version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_ENV"
+
+      - run: ./packaging/build.sh "$GITHUB_WORKSPACE/dist"
+
+      - name: checksums
+        working-directory: dist
+        run: sha256sum * > SHA256SUMS && cat SHA256SUMS
+
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "Murmur $GITHUB_REF_NAME" \
+            --generate-notes \
+            --notes-file - <<'NOTES'
+          Voice typing that never leaves your machine.
+
+          ## Install
+
+          ```sh
+          sudo apt install ./murmur_${{ env.version }}-1_amd64.deb
+          sudo dnf install ./murmur-${{ env.version }}-1.x86_64.rpm
+          ```
+
+          Then, once:
+
+          ```sh
+          sudo usermod -aG input $USER   # log out and back in
+          murmur models pull             # fetches the speech model
+          murmur doctor                  # confirms the machine can run it
+          ```
+
+          Group membership is a deliberate step, not something the package does
+          for you: read access to `/dev/input/event*` is the ability to read
+          every keystroke on the machine, and Murmur needs it to know when the
+          trigger key is held.
+
+          These packages are CPU-only. ONNX Runtime's CUDA provider is tied to a
+          CUDA major version and ships as objects that are not ours to
+          redistribute — build with `--features cuda` for the GPU.
+
+          Verify what you downloaded with `sha256sum -c SHA256SUMS`.
+          NOTES

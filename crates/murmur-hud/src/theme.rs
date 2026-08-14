@@ -44,7 +44,10 @@ pub fn dot(color: Color) -> Container<'static, crate::Message> {
         .height(Length::Fixed(10.0))
         .style(move |_: &Theme| container::Style {
             background: Some(Background::Color(color)),
-            border: Border { radius: 5.0.into(), ..Border::default() },
+            border: Border {
+                radius: 5.0.into(),
+                ..Border::default()
+            },
             ..container::Style::default()
         })
 }
@@ -62,7 +65,10 @@ pub fn meter(level: f32) -> Row<'static, crate::Message> {
         let profile = profile(i);
         let lit = height - BAR_MIN > (BAR_MAX - BAR_MIN) * 0.04;
         let color = if lit {
-            Color { a: 0.35 + 0.65 * profile, ..LISTENING }
+            Color {
+                a: 0.35 + 0.65 * profile,
+                ..LISTENING
+            }
         } else {
             Color::from_rgba(1.0, 1.0, 1.0, 0.10)
         };
@@ -72,13 +78,19 @@ pub fn meter(level: f32) -> Row<'static, crate::Message> {
             .height(Length::Fixed(height))
             .style(move |_: &Theme| container::Style {
                 background: Some(Background::Color(color)),
-                border: Border { radius: (BAR_WIDTH / 2.0).into(), ..Border::default() },
+                border: Border {
+                    radius: (BAR_WIDTH / 2.0).into(),
+                    ..Border::default()
+                },
                 ..container::Style::default()
             })
             .into()
     });
 
-    Row::with_children(bars).spacing(2).align_y(iced::Center).height(Length::Fixed(BAR_MAX))
+    Row::with_children(bars)
+        .spacing(2)
+        .align_y(iced::Center)
+        .height(Length::Fixed(BAR_MAX))
 }
 
 /// The fixed shape of the meter: tallest in the middle, tapering to the ends.
@@ -107,16 +119,20 @@ pub fn close(_theme: &Theme, status: iced::widget::button::Status) -> iced::widg
     use iced::widget::button::Status;
 
     let (background, text_color) = match status {
-        Status::Hovered | Status::Pressed => {
-            (Some(Background::Color(Color::from_rgba(1.0, 1.0, 1.0, 0.12))), TEXT)
-        }
+        Status::Hovered | Status::Pressed => (
+            Some(Background::Color(Color::from_rgba(1.0, 1.0, 1.0, 0.12))),
+            TEXT,
+        ),
         _ => (None, Color { a: 0.5, ..MUTED }),
     };
 
     iced::widget::button::Style {
         background,
         text_color,
-        border: Border { radius: 8.0.into(), ..Border::default() },
+        border: Border {
+            radius: 8.0.into(),
+            ..Border::default()
+        },
         ..iced::widget::button::Style::default()
     }
 }
@@ -191,7 +207,10 @@ mod tests {
     fn the_meter_swells_in_the_middle_like_a_waveform() {
         let bars = heights(1.0);
         let middle = bars[BARS / 2];
-        assert!(middle > bars[0], "the meter is flat, which reads as a progress bar");
+        assert!(
+            middle > bars[0],
+            "the meter is flat, which reads as a progress bar"
+        );
         assert!(middle > bars[BARS - 1]);
     }
 
@@ -202,6 +221,9 @@ mod tests {
         let quiet = heights(0.05);
         let span = BAR_MAX - BAR_MIN;
         let peak = quiet.iter().copied().fold(0.0f32, f32::max) - BAR_MIN;
-        assert!(peak > span * 0.15, "quiet speech drew only {peak}px of {span}px");
+        assert!(
+            peak > span * 0.15,
+            "quiet speech drew only {peak}px of {span}px"
+        );
     }
 }

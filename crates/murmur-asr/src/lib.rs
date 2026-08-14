@@ -5,9 +5,9 @@
 //! pre-roll, formatting, injection, latency accounting — can be exercised end to
 //! end against [`Mock`], on a machine with no model, no ONNX runtime and no GPU.
 
-pub mod mock;
 #[cfg(feature = "cuda")]
 pub mod cuda;
+pub mod mock;
 #[cfg(feature = "parakeet")]
 pub mod models;
 #[cfg(feature = "parakeet")]
@@ -46,7 +46,10 @@ pub struct Transcript {
 impl Transcript {
     #[must_use]
     pub fn new(text: impl Into<String>, elapsed: Duration) -> Self {
-        Self { text: text.into(), elapsed }
+        Self {
+            text: text.into(),
+            elapsed,
+        }
     }
 
     /// Audio seconds processed per second of compute.
@@ -56,7 +59,11 @@ impl Transcript {
     #[must_use]
     pub fn realtime_factor(&self, audio: Duration) -> f32 {
         let seconds = self.elapsed.as_secs_f32();
-        if seconds <= 0.0 { f32::INFINITY } else { audio.as_secs_f32() / seconds }
+        if seconds <= 0.0 {
+            f32::INFINITY
+        } else {
+            audio.as_secs_f32() / seconds
+        }
     }
 }
 

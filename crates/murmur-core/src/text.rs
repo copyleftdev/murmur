@@ -13,7 +13,10 @@ pub struct DictEntry {
 
 impl DictEntry {
     pub fn new(spoken: impl Into<String>, written: impl Into<String>) -> Self {
-        Self { spoken: spoken.into(), written: written.into() }
+        Self {
+            spoken: spoken.into(),
+            written: written.into(),
+        }
     }
 }
 
@@ -29,7 +32,11 @@ pub struct FormatConfig {
 
 impl Default for FormatConfig {
     fn default() -> Self {
-        Self { commands: true, trailing_space: true, dictionary: Vec::new() }
+        Self {
+            commands: true,
+            trailing_space: true,
+            dictionary: Vec::new(),
+        }
     }
 }
 
@@ -76,7 +83,11 @@ impl Formatter {
             .dictionary
             .iter()
             .map(|entry| Replacement {
-                spoken: entry.spoken.split_whitespace().map(str::to_ascii_lowercase).collect(),
+                spoken: entry
+                    .spoken
+                    .split_whitespace()
+                    .map(str::to_ascii_lowercase)
+                    .collect(),
                 written: entry.written.clone(),
             })
             .filter(|r| !r.spoken.is_empty())
@@ -119,8 +130,10 @@ impl Formatter {
         let mut i = 0;
         while i < tokens.len() {
             if self.config.commands {
-                if let Some(len) =
-                    SCRATCH_PHRASES.iter().find(|p| phrase_at(tokens, i, p)).map(|p| p.len())
+                if let Some(len) = SCRATCH_PHRASES
+                    .iter()
+                    .find(|p| phrase_at(tokens, i, p))
+                    .map(|p| p.len())
                 {
                     pieces.clear();
                     i += len;
@@ -134,7 +147,11 @@ impl Formatter {
                     continue;
                 }
             }
-            if let Some(entry) = self.dictionary.iter().find(|r| phrase_at(tokens, i, &r.spoken)) {
+            if let Some(entry) = self
+                .dictionary
+                .iter()
+                .find(|r| phrase_at(tokens, i, &r.spoken))
+            {
                 let (_, tail) = split_trailing_punctuation(tokens[i + entry.spoken.len() - 1]);
                 pieces.push(Piece::Word(format!("{}{tail}", entry.written)));
                 i += entry.spoken.len();
@@ -185,7 +202,10 @@ fn phrase_at(tokens: &[&str], at: usize, phrase: &[impl AsRef<str>]) -> bool {
 }
 
 fn split_trailing_punctuation(word: &str) -> (&str, &str) {
-    word.split_at(word.trim_end_matches(|c: char| c.is_ascii_punctuation()).len())
+    word.split_at(
+        word.trim_end_matches(|c: char| c.is_ascii_punctuation())
+            .len(),
+    )
 }
 
 #[cfg(test)]
@@ -201,7 +221,10 @@ mod tests {
     }
 
     fn with_dict(entries: Vec<DictEntry>) -> Formatter {
-        Formatter::new(FormatConfig { dictionary: entries, ..FormatConfig::default() })
+        Formatter::new(FormatConfig {
+            dictionary: entries,
+            ..FormatConfig::default()
+        })
     }
 
     #[test]
@@ -218,7 +241,10 @@ mod tests {
     #[test]
     fn break_commands_become_literal_newlines() {
         assert_eq!(plain("one new line two").as_deref(), Some("one\ntwo "));
-        assert_eq!(plain("one new paragraph two").as_deref(), Some("one\n\ntwo "));
+        assert_eq!(
+            plain("one new paragraph two").as_deref(),
+            Some("one\n\ntwo ")
+        );
     }
 
     #[test]
@@ -263,7 +289,10 @@ mod tests {
 
     #[test]
     fn longest_dictionary_phrase_wins() {
-        let dict = vec![DictEntry::new("see", "C"), DictEntry::new("see sharp", "C#")];
+        let dict = vec![
+            DictEntry::new("see", "C"),
+            DictEntry::new("see sharp", "C#"),
+        ];
         let out = with_dict(dict).format("see sharp", EmitContext::default());
         assert_eq!(out.as_deref(), Some("C# "));
     }
@@ -283,7 +312,10 @@ mod tests {
 
     #[test]
     fn commands_can_be_disabled_and_pass_through_verbatim() {
-        let f = Formatter::new(FormatConfig { commands: false, ..FormatConfig::default() });
+        let f = Formatter::new(FormatConfig {
+            commands: false,
+            ..FormatConfig::default()
+        });
         let out = f.format("one new line two", EmitContext::default());
         assert_eq!(out.as_deref(), Some("one new line two "));
     }

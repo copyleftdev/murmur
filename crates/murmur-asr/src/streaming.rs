@@ -56,7 +56,9 @@ pub struct NemotronStream {
 
 impl std::fmt::Debug for NemotronStream {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("NemotronStream").field("label", &self.label).finish_non_exhaustive()
+        f.debug_struct("NemotronStream")
+            .field("label", &self.label)
+            .finish_non_exhaustive()
     }
 }
 
@@ -102,7 +104,9 @@ impl NemotronStream {
         if model.mode() == NemotronMode::Multilingual
             && let Some(language) = language
         {
-            model.set_target_lang(language).map_err(|e| AsrError::Load(e.to_string()))?;
+            model
+                .set_target_lang(language)
+                .map_err(|e| AsrError::Load(e.to_string()))?;
         }
 
         let label = format!(
@@ -111,7 +115,11 @@ impl NemotronStream {
                 NemotronMode::Multilingual => "multilingual",
                 NemotronMode::EnglishOnly => "en",
             },
-            if matches!(provider, ExecutionProvider::Cpu) { "cpu" } else { "cuda" }
+            if matches!(provider, ExecutionProvider::Cpu) {
+                "cpu"
+            } else {
+                "cuda"
+            }
         );
         tracing::info!(
             model = %label,
@@ -120,7 +128,11 @@ impl NemotronStream {
             "streaming model ready"
         );
 
-        Ok(Self { model, label, fed: 0 })
+        Ok(Self {
+            model,
+            label,
+            fed: 0,
+        })
     }
 }
 
@@ -143,7 +155,9 @@ impl StreamingTranscriber for NemotronStream {
             return Ok(String::new());
         }
         self.fed += samples.len();
-        self.model.transcribe_chunk(samples).map_err(|e| AsrError::Inference(e.to_string()))
+        self.model
+            .transcribe_chunk(samples)
+            .map_err(|e| AsrError::Inference(e.to_string()))
     }
 
     fn finish(&mut self) -> Result<String> {
@@ -155,7 +169,11 @@ impl StreamingTranscriber for NemotronStream {
             return Ok(String::new());
         }
         let remainder = self.fed % chunk;
-        let padding = if remainder == 0 { chunk } else { chunk - remainder + chunk };
+        let padding = if remainder == 0 {
+            chunk
+        } else {
+            chunk - remainder + chunk
+        };
         self.feed(&vec![0.0f32; padding])
     }
 }

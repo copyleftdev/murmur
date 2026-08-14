@@ -29,7 +29,9 @@ pub enum InjectError {
     UinputPermission,
     #[error("virtual keyboard: {0}")]
     Uinput(String),
-    #[error("cannot type {ch:?} with a scancode; this session has no working clipboard to fall back on")]
+    #[error(
+        "cannot type {ch:?} with a scancode; this session has no working clipboard to fall back on"
+    )]
     Untypable { ch: char },
     #[error("clipboard: {0}")]
     Clipboard(String),
@@ -38,7 +40,7 @@ pub enum InjectError {
 }
 
 impl InjectError {
-    fn from_uinput(error: std::io::Error) -> Self {
+    fn from_uinput(error: &std::io::Error) -> Self {
         if error.kind() == std::io::ErrorKind::PermissionDenied {
             Self::UinputPermission
         } else {
@@ -83,7 +85,11 @@ impl Injector {
         let keyboard = UinputKeyboard::open(config.keystroke_delay_us)?;
         let clipboard_available = clipboard::is_available();
         tracing::info!(clipboard = clipboard_available, "injection ready");
-        Ok(Self { keyboard, config, clipboard_available })
+        Ok(Self {
+            keyboard,
+            config,
+            clipboard_available,
+        })
     }
 
     #[must_use]
@@ -92,9 +98,14 @@ impl Injector {
     }
 
     fn paste(&mut self, text: &str) -> Result<()> {
-        let saved = self.config.restore_clipboard.then(clipboard::snapshot).flatten();
+        let saved = self
+            .config
+            .restore_clipboard
+            .then(clipboard::snapshot)
+            .flatten();
         clipboard::offer_once(text)?;
-        self.keyboard.chord(&[evdev::KeyCode::KEY_LEFTCTRL], evdev::KeyCode::KEY_V)?;
+        self.keyboard
+            .chord(&[evdev::KeyCode::KEY_LEFTCTRL], evdev::KeyCode::KEY_V)?;
         if let Some(saved) = saved {
             std::thread::sleep(CLIPBOARD_HANDOVER);
             clipboard::restore(&saved)?;
@@ -164,9 +175,9 @@ pub fn probe() -> Vec<Capability> {
                 Ok(_) => format!("{UINPUT_NODE} is writable"),
                 Err(e) => format!("{UINPUT_NODE}: {e}"),
             },
-            remedy: uinput.is_err().then(|| {
-                "sudo usermod -aG input $USER   # then log out and back in".to_owned()
-            }),
+            remedy: uinput
+                .is_err()
+                .then(|| "sudo usermod -aG input $USER   # then log out and back in".to_owned()),
         },
         Capability {
             name: "clipboard",
@@ -193,46 +204,72 @@ mod tests {
     use super::*;
 
     fn injector_config(backend: InjectBackend, threshold: usize) -> InjectConfig {
-        InjectConfig { backend, paste_threshold: threshold, ..InjectConfig::default() }
+        InjectConfig {
+            backend,
+            paste_threshold: threshold,
+            ..InjectConfig::default()
+        }
     }
 
     use super::routes_to_clipboard as should_paste;
 
     #[test]
     fn short_ascii_is_typed_and_leaves_the_clipboard_alone() {
-        assert!(!should_paste(&injector_config(InjectBackend::Auto, 80), "hello there "));
+        assert!(!should_paste(
+            &injector_config(InjectBackend::Auto, 80),
+            "hello there "
+        ));
     }
 
     #[test]
     fn long_text_is_pasted_because_typing_is_linear_in_length() {
         let long = "word ".repeat(40);
-        assert!(should_paste(&injector_config(InjectBackend::Auto, 80), &long));
+        assert!(should_paste(
+            &injector_config(InjectBackend::Auto, 80),
+            &long
+        ));
     }
 
     #[test]
     fn non_ascii_is_pasted_however_short_it_is() {
-        assert!(should_paste(&injector_config(InjectBackend::Auto, 80), "café"));
+        assert!(should_paste(
+            &injector_config(InjectBackend::Auto, 80),
+            "café"
+        ));
         assert!(should_paste(&injector_config(InjectBackend::Auto, 80), "🎙"));
     }
 
     #[test]
     fn an_explicit_backend_overrides_the_length_heuristic() {
         let long = "word ".repeat(40);
-        assert!(!should_paste(&injector_config(InjectBackend::Uinput, 80), &long));
-        assert!(should_paste(&injector_config(InjectBackend::Clipboard, 80), "hi"));
+        assert!(!should_paste(
+            &injector_config(InjectBackend::Uinput, 80),
+            &long
+        ));
+        assert!(should_paste(
+            &injector_config(InjectBackend::Clipboard, 80),
+            "hi"
+        ));
     }
 
     #[test]
     fn the_threshold_counts_characters_not_bytes() {
         let text = "é".repeat(10);
         assert_eq!(text.len(), 20, "precondition: multi-byte");
-        assert!(should_paste(&injector_config(InjectBackend::Auto, 15), &text));
+        assert!(should_paste(
+            &injector_config(InjectBackend::Auto, 15),
+            &text
+        ));
     }
 
     #[test]
     fn probe_reports_every_capability_without_side_effects() {
         let report = probe();
         assert!(report.iter().any(|c| c.name == "uinput"));
-        assert!(report.iter().all(|c| c.available || c.remedy.is_some() || c.name == "session"));
+        assert!(
+            report
+                .iter()
+                .all(|c| c.available || c.remedy.is_some() || c.name == "session")
+        );
     }
 }

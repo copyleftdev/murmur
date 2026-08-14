@@ -16,6 +16,5 @@ cpal = "0.18"
 rubato = "5"
 earshot = "1"
 
-[lints.clippy]
-pedantic = { level = "warn", priority = -1 }
-module_name_repetitions = "allow"
+[lints]
+workspace = true

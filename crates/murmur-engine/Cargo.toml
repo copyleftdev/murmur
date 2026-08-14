@@ -17,6 +17,5 @@ murmur-audio = { workspace = true }
 murmur-hotkey = { workspace = true }
 murmur-inject = { workspace = true }
 
-[lints.clippy]
-pedantic = { level = "warn", priority = -1 }
-module_name_repetitions = "allow"
+[lints]
+workspace = true

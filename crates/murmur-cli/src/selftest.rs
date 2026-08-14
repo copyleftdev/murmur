@@ -61,7 +61,9 @@ pub fn run(keystroke_delay_us: u64) -> Result<()> {
         .recv_timeout(READBACK_TIMEOUT)
         .context("reader thread never grabbed the device")?;
 
-    keyboard.type_text(PROBE).context("emitting the probe text")?;
+    keyboard
+        .type_text(PROBE)
+        .context("emitting the probe text")?;
 
     let mut decoded = String::new();
     for _ in 0..expected {
@@ -71,12 +73,16 @@ pub fn run(keystroke_delay_us: u64) -> Result<()> {
             Err(_) => break,
         }
     }
-    reader.join().map_err(|_| anyhow::anyhow!("reader thread panicked"))??;
+    reader
+        .join()
+        .map_err(|_| anyhow::anyhow!("reader thread panicked"))??;
 
     println!("  sent      {PROBE:?}");
     println!("  received  {decoded:?}");
     if decoded == PROBE {
-        println!("\n  injection path verified: {expected} characters round-tripped through the kernel.");
+        println!(
+            "\n  injection path verified: {expected} characters round-tripped through the kernel."
+        );
         Ok(())
     } else {
         bail!("round-trip mismatch: the virtual keyboard did not deliver what it was given");

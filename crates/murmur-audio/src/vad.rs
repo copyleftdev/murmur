@@ -61,7 +61,9 @@ mod tests {
     use std::f32::consts::TAU;
 
     fn tone(freq: f32, samples: usize) -> Vec<f32> {
-        (0..samples).map(|i| (TAU * freq * i as f32 / 16_000.0).sin() * 0.5).collect()
+        (0..samples)
+            .map(|i| (TAU * freq * i as f32 / 16_000.0).sin() * 0.5)
+            .collect()
     }
 
     #[test]
@@ -86,7 +88,11 @@ mod tests {
         let audio = tone(300.0, FRAME * 40);
         let range = speech_range(&audio, 0.0);
         assert_eq!(range.start, 0);
-        assert!(range.end >= audio.len() - FRAME, "range {range:?} of {}", audio.len());
+        assert!(
+            range.end >= audio.len() - FRAME,
+            "range {range:?} of {}",
+            audio.len()
+        );
     }
 
     #[test]
@@ -105,13 +111,19 @@ mod tests {
     fn scores_are_produced_per_whole_frame_and_bounded() {
         let audio = tone(440.0, FRAME * 10 + 5);
         let scores = frame_scores(&audio);
-        assert_eq!(scores.len(), 10, "partial trailing frame must not be scored");
+        assert_eq!(
+            scores.len(),
+            10,
+            "partial trailing frame must not be scored"
+        );
         assert!(scores.iter().all(|s| (0.0..=1.0).contains(s)), "{scores:?}");
     }
 
     #[test]
     fn clipped_input_does_not_panic_the_detector() {
-        let hot: Vec<f32> = (0..FRAME * 8).map(|i| if i % 2 == 0 { 4.0 } else { -4.0 }).collect();
+        let hot: Vec<f32> = (0..FRAME * 8)
+            .map(|i| if i % 2 == 0 { 4.0 } else { -4.0 })
+            .collect();
         let range = speech_range(&hot, 0.5);
         assert!(range.end <= hot.len());
     }

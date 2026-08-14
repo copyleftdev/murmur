@@ -45,7 +45,10 @@ impl Mock {
     /// Fail every call, to exercise the recovery path.
     #[must_use]
     pub fn failing() -> Self {
-        Self { fail: true, ..Self::new(Vec::<String>::new()) }
+        Self {
+            fail: true,
+            ..Self::new(Vec::<String>::new())
+        }
     }
 }
 
@@ -60,7 +63,9 @@ impl Transcriber for Mock {
             std::thread::sleep(self.delay);
         }
         if self.fail {
-            return Err(AsrError::Inference("mock transcriber is configured to fail".into()));
+            return Err(AsrError::Inference(
+                "mock transcriber is configured to fail".into(),
+            ));
         }
         // Silence transcribes to nothing, exactly as a real engine would, so the
         // "empty transcript injects nothing" path is exercised by accident too.
@@ -97,7 +102,7 @@ mod tests {
     #[test]
     fn silence_transcribes_to_nothing() {
         let mut mock = Mock::default();
-        assert_eq!(mock.transcribe(&[0.0; 16_000]).unwrap().text, "");
+        assert_eq!(mock.transcribe(&vec![0.0; 16_000]).unwrap().text, "");
     }
 
     #[test]
@@ -109,7 +114,11 @@ mod tests {
     fn the_scripted_delay_is_actually_spent() {
         let mut mock = Mock::default().with_delay(Duration::from_millis(30));
         let transcript = mock.transcribe(&speech()).unwrap();
-        assert!(transcript.elapsed >= Duration::from_millis(30), "{:?}", transcript.elapsed);
+        assert!(
+            transcript.elapsed >= Duration::from_millis(30),
+            "{:?}",
+            transcript.elapsed
+        );
     }
 
     #[test]
@@ -121,6 +130,10 @@ mod tests {
     #[test]
     fn an_instant_transcription_does_not_divide_by_zero() {
         let transcript = Transcript::new("x", Duration::ZERO);
-        assert!(transcript.realtime_factor(Duration::from_secs(1)).is_infinite());
+        assert!(
+            transcript
+                .realtime_factor(Duration::from_secs(1))
+                .is_infinite()
+        );
     }
 }

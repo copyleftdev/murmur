@@ -40,10 +40,13 @@ impl UinputKeyboard {
         let device = VirtualDevice::builder()
             .and_then(|b| b.name("Murmur virtual keyboard").with_keys(&keys))
             .and_then(evdev::uinput::VirtualDeviceBuilder::build)
-            .map_err(InjectError::from_uinput)?;
+            .map_err(|error| InjectError::from_uinput(&error))?;
 
         sleep(SETTLE);
-        Ok(Self { device, delay: Duration::from_micros(keystroke_delay_us) })
+        Ok(Self {
+            device,
+            delay: Duration::from_micros(keystroke_delay_us),
+        })
     }
 
     /// The `/dev/input/eventN` node this virtual device appears at.
@@ -54,9 +57,14 @@ impl UinputKeyboard {
     /// # Errors
     /// Fails if the device's sysfs entry cannot be enumerated.
     pub fn dev_node(&mut self) -> Result<Option<std::path::PathBuf>> {
-        let mut nodes =
-            self.device.enumerate_dev_nodes_blocking().map_err(InjectError::from_uinput)?;
-        nodes.next().transpose().map_err(InjectError::from_uinput)
+        let mut nodes = self
+            .device
+            .enumerate_dev_nodes_blocking()
+            .map_err(|error| InjectError::from_uinput(&error))?;
+        nodes
+            .next()
+            .transpose()
+            .map_err(|error| InjectError::from_uinput(&error))
     }
 
     /// Type `text` one scancode at a time.
@@ -64,6 +72,9 @@ impl UinputKeyboard {
     /// # Errors
     /// Returns [`InjectError::Untypable`] before emitting anything if any
     /// character is outside the keymap, so a partial line is never left behind.
+    ///
+    /// # Panics
+    /// Never: every character is checked against the keymap before any is sent.
     pub fn type_text(&mut self, text: &str) -> Result<()> {
         if let Some(ch) = keymap::first_untypable(text) {
             return Err(InjectError::Untypable { ch });
@@ -83,18 +94,22 @@ impl UinputKeyboard {
     /// # Errors
     /// Fails if the device rejects the write.
     pub fn chord(&mut self, modifiers: &[KeyCode], key: KeyCode) -> Result<()> {
-        let mut events: Vec<InputEvent> =
-            modifiers.iter().map(|m| *KeyEvent::new(*m, 1)).collect();
+        let mut events: Vec<InputEvent> = modifiers.iter().map(|m| *KeyEvent::new(*m, 1)).collect();
         events.push(*KeyEvent::new(key, 1));
         events.push(*KeyEvent::new(key, 0));
         events.extend(modifiers.iter().rev().map(|m| *KeyEvent::new(*m, 0)));
-        self.device.emit(&events).map_err(InjectError::from_uinput)
+        self.device
+            .emit(&events)
+            .map_err(|error| InjectError::from_uinput(&error))
     }
 
     /// Erase `count` characters to the left of the cursor.
     ///
     /// # Errors
     /// Fails if the device rejects the write.
+    ///
+    /// # Panics
+    /// Never in practice: the keys have already been checked against the keymap.
     pub fn backspace(&mut self, count: usize) -> Result<()> {
         for _ in 0..count {
             self.tap(KeyCode::KEY_BACKSPACE, false)?;
@@ -116,7 +131,9 @@ impl UinputKeyboard {
         } else {
             &[*KeyEvent::new(key, 1), *KeyEvent::new(key, 0)]
         };
-        self.device.emit(events).map_err(InjectError::from_uinput)
+        self.device
+            .emit(events)
+            .map_err(|error| InjectError::from_uinput(&error))
     }
 }
 

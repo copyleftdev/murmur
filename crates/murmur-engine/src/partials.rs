@@ -26,7 +26,7 @@ pub type SharedTranscriber = Arc<Mutex<Box<dyn Transcriber>>>;
 const MIN_INTERVAL: Duration = Duration::from_millis(300);
 
 /// Nor less often than this, however slow it is.
-const MAX_INTERVAL: Duration = Duration::from_millis(2_000);
+const MAX_INTERVAL: Duration = Duration::from_secs(2);
 
 /// Target duty cycle: a pass taking `d` earns a gap of `DUTY * d`.
 ///
@@ -40,6 +40,7 @@ struct Request {
     samples: Vec<f32>,
 }
 
+#[derive(Debug)]
 pub struct Reply {
     pub id: UtteranceId,
     pub text: String,
@@ -57,7 +58,9 @@ pub struct Partials {
 
 impl std::fmt::Debug for Partials {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Partials").field("interval", &self.interval).finish_non_exhaustive()
+        f.debug_struct("Partials")
+            .field("interval", &self.interval)
+            .finish_non_exhaustive()
     }
 }
 
@@ -87,7 +90,11 @@ impl Partials {
                     // fail too, and report properly.
                     if let Some(text) = text
                         && outbox
-                            .send(Reply { id: request.id, text, took: started.elapsed() })
+                            .send(Reply {
+                                id: request.id,
+                                text,
+                                took: started.elapsed(),
+                            })
                             .is_err()
                     {
                         return;
@@ -96,7 +103,13 @@ impl Partials {
             })
             .ok();
 
-        Self { requests, replies, busy, interval: MIN_INTERVAL, last_request: None }
+        Self {
+            requests,
+            replies,
+            busy,
+            interval: MIN_INTERVAL,
+            last_request: None,
+        }
     }
 
     /// Forget any pacing state, at the start of an utterance.
@@ -113,7 +126,10 @@ impl Partials {
         if samples.is_empty() || self.busy.load(Ordering::SeqCst) {
             return;
         }
-        if self.last_request.is_some_and(|last| now.duration_since(last) < self.interval) {
+        if self
+            .last_request
+            .is_some_and(|last| now.duration_since(last) < self.interval)
+        {
             return;
         }
         self.last_request = Some(now);
@@ -146,7 +162,9 @@ mod tests {
     use murmur_asr::Mock;
 
     fn shared() -> SharedTranscriber {
-        Arc::new(Mutex::new(Box::new(Mock::new(["live text"])) as Box<dyn Transcriber>))
+        Arc::new(Mutex::new(
+            Box::new(Mock::new(["live text"])) as Box<dyn Transcriber>
+        ))
     }
 
     fn speech() -> Vec<f32> {
@@ -182,7 +200,10 @@ mod tests {
         // Immediately after: too soon, so nothing new should be produced.
         partials.offer(1, speech(), now);
         std::thread::sleep(Duration::from_millis(80));
-        assert!(partials.collect().is_empty(), "a stale snapshot was queued anyway");
+        assert!(
+            partials.collect().is_empty(),
+            "a stale snapshot was queued anyway"
+        );
     }
 
     #[test]

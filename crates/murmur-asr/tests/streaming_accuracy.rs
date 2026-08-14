@@ -25,7 +25,10 @@ fn model_root() -> PathBuf {
 fn read_wav(path: &Path) -> Vec<f32> {
     let mut reader = hound::WavReader::open(path).expect("opening the sample");
     let scale = f32::from(i16::MAX);
-    reader.samples::<i16>().map(|s| f32::from(s.expect("sample")) / scale).collect()
+    reader
+        .samples::<i16>()
+        .map(|s| f32::from(s.expect("sample")) / scale)
+        .collect()
 }
 
 fn load() -> Option<NemotronStream> {
@@ -51,7 +54,11 @@ fn chunked_audio_transcribes_the_known_speech() {
     let (transcript, _) = transcribe_all(&mut model, &samples).expect("transcribing");
     let lowered = transcript.text.to_lowercase();
     for word in ["fellow", "americans", "country"] {
-        assert!(lowered.contains(word), "{word:?} missing from {:?}", transcript.text);
+        assert!(
+            lowered.contains(word),
+            "{word:?} missing from {:?}",
+            transcript.text
+        );
     }
 }
 

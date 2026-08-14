@@ -55,7 +55,9 @@ impl Recorder for murmur_audio::Microphone {
     }
 
     fn finish(&mut self) -> Result<Recorded, String> {
-        Self::finish(self).map(Into::into).map_err(|e| e.to_string())
+        Self::finish(self)
+            .map(Into::into)
+            .map_err(|e| e.to_string())
     }
 
     fn discard(&mut self) {
@@ -94,12 +96,18 @@ impl Fixture {
 
     #[must_use]
     pub fn silent() -> Self {
-        Self { audio: vec![0.0; 16_000], ..Self::default() }
+        Self {
+            audio: vec![0.0; 16_000],
+            ..Self::default()
+        }
     }
 
     #[must_use]
     pub fn failing(reason: impl Into<String>) -> Self {
-        Self { fail: Some(reason.into()), ..Self::speaking() }
+        Self {
+            fail: Some(reason.into()),
+            ..Self::speaking()
+        }
     }
 
     #[must_use]

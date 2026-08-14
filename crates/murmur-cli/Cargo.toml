@@ -35,11 +35,6 @@ default = []
 cuda = ["murmur-asr/cuda"]
 tensorrt = ["murmur-asr/tensorrt"]
 
-[lints.clippy]
-pedantic = { level = "warn", priority = -1 }
-
-# One package holds both binaries: the overlay and the command line are the same
-# product, and splitting them would only make `murmur hud` fail for half of users.
 [package.metadata.deb]
 name = "murmur"
 maintainer = "copyleftdev"
@@ -91,3 +86,6 @@ libwayland-client = "*"
 libX11 = "*"
 mesa-libGL = "*"
 vulkan-loader = "*"
+
+[lints]
+workspace = true

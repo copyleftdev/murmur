@@ -75,7 +75,9 @@ pub fn watch(key: evdev::KeyCode) -> Result<Receiver<TriggerEvent>> {
     let devices: Vec<(std::path::PathBuf, evdev::Device)> = evdev::enumerate()
         .filter(|(_, device)| device.name() != Some(SELF_DEVICE))
         .filter(|(_, device)| {
-            device.supported_keys().is_some_and(|keys| keys.contains(key))
+            device
+                .supported_keys()
+                .is_some_and(|keys| keys.contains(key))
         })
         .collect();
 
@@ -125,7 +127,9 @@ pub fn watch_all() -> Result<Receiver<(evdev::KeyCode, Edge)>> {
             .name(format!("murmur-keys:{}", path.display()))
             .spawn(move || {
                 loop {
-                    let Ok(events) = device.fetch_events() else { return };
+                    let Ok(events) = device.fetch_events() else {
+                        return;
+                    };
                     for event in events {
                         if let evdev::EventSummary::Key(_, code, value) = event.destructure() {
                             let edge = match value {
@@ -150,9 +154,17 @@ pub fn watch_all() -> Result<Receiver<(evdev::KeyCode, Edge)>> {
 pub fn readable_keyboards(key: evdev::KeyCode) -> Vec<String> {
     evdev::enumerate()
         .filter(|(_, device)| device.name() != Some(SELF_DEVICE))
-        .filter(|(_, device)| device.supported_keys().is_some_and(|keys| keys.contains(key)))
+        .filter(|(_, device)| {
+            device
+                .supported_keys()
+                .is_some_and(|keys| keys.contains(key))
+        })
         .map(|(path, device)| {
-            format!("{} ({})", device.name().unwrap_or("unnamed"), path.display())
+            format!(
+                "{} ({})",
+                device.name().unwrap_or("unnamed"),
+                path.display()
+            )
         })
         .collect()
 }
@@ -187,7 +199,13 @@ fn read_loop(
             if was == (edge == Edge::Down) {
                 continue;
             }
-            if tx.send(TriggerEvent { edge, at: Instant::now() }).is_err() {
+            if tx
+                .send(TriggerEvent {
+                    edge,
+                    at: Instant::now(),
+                })
+                .is_err()
+            {
                 return;
             }
         }
@@ -200,7 +218,10 @@ mod tests {
 
     #[test]
     fn the_default_trigger_key_resolves() {
-        assert_eq!(key_by_name("RIGHTCTRL").unwrap(), evdev::KeyCode::KEY_RIGHTCTRL);
+        assert_eq!(
+            key_by_name("RIGHTCTRL").unwrap(),
+            evdev::KeyCode::KEY_RIGHTCTRL
+        );
     }
 
     #[test]
@@ -229,7 +250,11 @@ mod tests {
             evdev::KeyCode::KEY_RIGHTALT,
         ] {
             let name = key_name(key).expect("named");
-            assert_eq!(key_by_name(&name).unwrap(), key, "round trip failed for {name}");
+            assert_eq!(
+                key_by_name(&name).unwrap(),
+                key,
+                "round trip failed for {name}"
+            );
         }
     }
 

@@ -118,14 +118,15 @@ impl Microphone {
         };
 
         let name = device_name(&device).unwrap_or_else(|| "unknown".into());
-        let supported =
-            device.default_input_config().map_err(|e| AudioError::Device(e.to_string()))?;
+        let supported = device
+            .default_input_config()
+            .map_err(|e| AudioError::Device(e.to_string()))?;
         let rate = supported.sample_rate();
         let channels = supported.channels();
         let format = supported.sample_format();
         let stream_config: cpal::StreamConfig = supported.into();
 
-        let preroll_capacity = (rate as u64 * u64::from(config.preroll_ms) / 1000) as usize;
+        let preroll_capacity = (u64::from(rate) * u64::from(config.preroll_ms) / 1000) as usize;
         let shared = Arc::new(Mutex::new(Shared {
             preroll: VecDeque::with_capacity(preroll_capacity + 1),
             preroll_capacity,
@@ -136,12 +137,23 @@ impl Microphone {
             cpal::SampleFormat::F32 => build::<f32>(&device, &stream_config, &shared, channels),
             cpal::SampleFormat::I16 => build::<i16>(&device, &stream_config, &shared, channels),
             cpal::SampleFormat::U16 => build::<u16>(&device, &stream_config, &shared, channels),
-            other => Err(AudioError::Device(format!("unsupported sample format {other:?}"))),
+            other => Err(AudioError::Device(format!(
+                "unsupported sample format {other:?}"
+            ))),
         }?;
-        stream.play().map_err(|e| AudioError::Device(e.to_string()))?;
+        stream
+            .play()
+            .map_err(|e| AudioError::Device(e.to_string()))?;
 
         tracing::info!(%name, rate, channels, ?format, "microphone open");
-        Ok(Self { _stream: stream, shared, rate, channels, name, vad: config.vad })
+        Ok(Self {
+            _stream: stream,
+            shared,
+            rate,
+            channels,
+            name,
+            vad: config.vad,
+        })
     }
 
     #[must_use]
@@ -194,9 +206,12 @@ impl Microphone {
             resampled
         };
 
-        let duration =
-            Duration::from_secs_f32(samples.len() as f32 / TARGET_SAMPLE_RATE as f32);
-        Ok(Capture { trimmed: full - samples.len(), samples, duration })
+        let duration = Duration::from_secs_f32(samples.len() as f32 / TARGET_SAMPLE_RATE as f32);
+        Ok(Capture {
+            trimmed: full - samples.len(),
+            samples,
+            duration,
+        })
     }
 
     /// The audio captured so far, without ending the recording.
@@ -215,7 +230,11 @@ impl Microphone {
         };
         let samples = resample::to_target(&raw, self.rate)?;
         let duration = Duration::from_secs_f32(samples.len() as f32 / TARGET_SAMPLE_RATE as f32);
-        Ok(Some(Capture { trimmed: 0, samples, duration }))
+        Ok(Some(Capture {
+            trimmed: 0,
+            samples,
+            duration,
+        }))
     }
 
     /// Drop whatever is being recorded without producing a capture.
@@ -244,7 +263,7 @@ where
     let sink = Arc::clone(shared);
     device
         .build_input_stream(
-            config.clone(),
+            *config,
             move |data: &[T], _: &cpal::InputCallbackInfo| {
                 let floats: Vec<f32> = data.iter().map(|s| s.to_sample::<f32>()).collect();
                 let mono = resample::to_mono(&floats, channels);
@@ -270,7 +289,11 @@ pub fn list_devices() -> Result<Vec<String>> {
         .map_err(|e| AudioError::Device(e.to_string()))?
         .filter_map(|d| device_name(&d))
         .map(|name| {
-            if Some(&name) == default.as_ref() { format!("{name} (default)") } else { name }
+            if Some(&name) == default.as_ref() {
+                format!("{name} (default)")
+            } else {
+                name
+            }
         })
         .collect())
 }
@@ -281,7 +304,10 @@ mod tests {
 
     #[test]
     fn preroll_keeps_only_the_most_recent_window() {
-        let mut shared = Shared { preroll_capacity: 4, ..Shared::default() };
+        let mut shared = Shared {
+            preroll_capacity: 4,
+            ..Shared::default()
+        };
         shared.push(&[1.0, 2.0, 3.0]);
         shared.push(&[4.0, 5.0, 6.0]);
         let kept: Vec<f32> = shared.preroll.iter().copied().collect();
@@ -290,29 +316,46 @@ mod tests {
 
     #[test]
     fn recording_captures_everything_without_bound() {
-        let mut shared = Shared { preroll_capacity: 2, recording: Some(Vec::new()), ..Shared::default() };
+        let mut shared = Shared {
+            preroll_capacity: 2,
+            recording: Some(Vec::new()),
+            ..Shared::default()
+        };
         for _ in 0..100 {
             shared.push(&[0.5; 16]);
         }
         assert_eq!(shared.recording.as_ref().unwrap().len(), 1_600);
-        assert!(shared.preroll.is_empty(), "recording must not also fill the pre-roll");
+        assert!(
+            shared.preroll.is_empty(),
+            "recording must not also fill the pre-roll"
+        );
     }
 
     #[test]
     fn the_level_meter_attacks_fast_and_releases_slowly() {
-        let mut shared = Shared { preroll_capacity: 16, ..Shared::default() };
+        let mut shared = Shared {
+            preroll_capacity: 16,
+            ..Shared::default()
+        };
         shared.push(&[1.0; 8]);
         let peak = shared.level;
         assert!((peak - 1.0).abs() < 1e-6);
 
         shared.push(&[0.0; 8]);
         assert!(shared.level < peak, "meter must fall");
-        assert!(shared.level > 0.5, "meter must not snap to zero: {}", shared.level);
+        assert!(
+            shared.level > 0.5,
+            "meter must not snap to zero: {}",
+            shared.level
+        );
     }
 
     #[test]
     fn a_zero_length_callback_does_not_divide_by_zero() {
-        let mut shared = Shared { preroll_capacity: 4, ..Shared::default() };
+        let mut shared = Shared {
+            preroll_capacity: 4,
+            ..Shared::default()
+        };
         shared.push(&[]);
         assert!(shared.level.is_finite());
     }

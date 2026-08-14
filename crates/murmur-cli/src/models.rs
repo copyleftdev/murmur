@@ -17,8 +17,11 @@ const COMMON: &[&str] = &["vocab.txt", "config.json", "nemo128.onnx"];
 
 const INT8: &[&str] = &["decoder_joint-model.int8.onnx", "encoder-model.int8.onnx"];
 
-const FP32: &[&str] =
-    &["decoder_joint-model.onnx", "encoder-model.onnx", "encoder-model.onnx.data"];
+const FP32: &[&str] = &[
+    "decoder_joint-model.onnx",
+    "encoder-model.onnx",
+    "encoder-model.onnx.data",
+];
 
 /// The directory name a precision is installed under.
 ///
@@ -46,12 +49,15 @@ pub fn pull(root: &Path, precision: Precision, gpu_usable: bool) -> Result<PathB
     };
 
     let dir = root.join(directory_for(precision));
-    std::fs::create_dir_all(&dir)
-        .with_context(|| format!("creating {}", dir.display()))?;
+    std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
 
     let files: Vec<&str> = COMMON
         .iter()
-        .chain(if precision == Precision::Fp32 { FP32 } else { INT8 })
+        .chain(if precision == Precision::Fp32 {
+            FP32
+        } else {
+            INT8
+        })
         .copied()
         .collect();
 
@@ -102,11 +108,14 @@ fn fetch(destination: &Path, url: &str, name: &str) -> Result<()> {
     let mut buffer = vec![0u8; 1 << 20];
     let mut written = 0u64;
     loop {
-        let read = reader.read(&mut buffer).with_context(|| format!("reading {name}"))?;
+        let read = reader
+            .read(&mut buffer)
+            .with_context(|| format!("reading {name}"))?;
         if read == 0 {
             break;
         }
-        file.write_all(&buffer[..read]).with_context(|| format!("writing {name}"))?;
+        file.write_all(&buffer[..read])
+            .with_context(|| format!("writing {name}"))?;
         written += read as u64;
         if show_progress {
             progress(name, written, expected);
@@ -160,14 +169,20 @@ mod tests {
 
     #[test]
     fn each_precision_installs_somewhere_of_its_own() {
-        assert_ne!(directory_for(Precision::Fp32), directory_for(Precision::Int8));
+        assert_ne!(
+            directory_for(Precision::Fp32),
+            directory_for(Precision::Int8)
+        );
     }
 
     #[test]
     fn auto_installs_where_auto_would_look() {
         // The selector treats a directory without full-precision weights as the
         // int8 model, so `auto` must not put int8 in the fp32 directory.
-        assert_eq!(directory_for(Precision::Auto), directory_for(Precision::Int8));
+        assert_eq!(
+            directory_for(Precision::Auto),
+            directory_for(Precision::Int8)
+        );
     }
 
     #[test]
@@ -183,6 +198,9 @@ mod tests {
         assert!(COMMON.contains(&"vocab.txt"));
         assert!(INT8.iter().any(|f| f.starts_with("encoder-model")));
         assert!(FP32.iter().any(|f| f.starts_with("encoder-model")));
-        assert!(FP32.contains(&"encoder-model.onnx.data"), "external weights are required");
+        assert!(
+            FP32.contains(&"encoder-model.onnx.data"),
+            "external weights are required"
+        );
     }
 }

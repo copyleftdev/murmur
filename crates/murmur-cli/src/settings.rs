@@ -25,8 +25,8 @@ pub fn load() -> Result<Config> {
     if !path.exists() {
         return Ok(Config::default());
     }
-    let text = std::fs::read_to_string(&path)
-        .with_context(|| format!("reading {}", path.display()))?;
+    let text =
+        std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
     toml::from_str(&text).with_context(|| format!("parsing {}", path.display()))
 }
 
@@ -50,8 +50,10 @@ pub fn write_default() -> Result<PathBuf> {
 #[must_use]
 pub fn expand_home(input: &str) -> PathBuf {
     match input.strip_prefix("~/") {
-        Some(rest) => std::env::var_os("HOME")
-            .map_or_else(|| PathBuf::from(input), |home| PathBuf::from(home).join(rest)),
+        Some(rest) => std::env::var_os("HOME").map_or_else(
+            || PathBuf::from(input),
+            |home| PathBuf::from(home).join(rest),
+        ),
         None => PathBuf::from(input),
     }
 }
@@ -69,7 +71,10 @@ mod tests {
     #[test]
     fn home_is_expanded_only_at_the_start_of_a_path() {
         let home = std::env::var("HOME").unwrap();
-        assert_eq!(expand_home("~/models/x"), PathBuf::from(&home).join("models/x"));
+        assert_eq!(
+            expand_home("~/models/x"),
+            PathBuf::from(&home).join("models/x")
+        );
         assert_eq!(expand_home("/abs/~/x"), PathBuf::from("/abs/~/x"));
         assert_eq!(expand_home("relative/x"), PathBuf::from("relative/x"));
     }

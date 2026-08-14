@@ -1,5 +1,5 @@
-use crate::{AsrError, Transcriber, Transcript};
 use crate::models;
+use crate::{AsrError, Transcriber, Transcript};
 use murmur_core::config::{Accelerator, Precision, TARGET_SAMPLE_RATE};
 use parakeet_rs::{ExecutionConfig, ExecutionProvider, ParakeetTDT, Transcriber as _};
 use std::path::Path;
@@ -7,7 +7,7 @@ use std::time::Instant;
 
 /// NVIDIA Parakeet TDT via ONNX Runtime.
 ///
-/// The model is a FastConformer transducer that emits punctuation and casing of
+/// The model is a `FastConformer` transducer that emits punctuation and casing of
 /// its own, which is why Murmur's formatter deliberately does not try to add
 /// either — it only applies the user's dictionary and spoken commands on top.
 pub struct Parakeet {
@@ -17,7 +17,9 @@ pub struct Parakeet {
 
 impl std::fmt::Debug for Parakeet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Parakeet").field("label", &self.label).finish_non_exhaustive()
+        f.debug_struct("Parakeet")
+            .field("label", &self.label)
+            .finish_non_exhaustive()
     }
 }
 
@@ -39,8 +41,13 @@ impl Parakeet {
     ) -> Result<Self, AsrError> {
         let gpu_usable = gpu_usable(accelerator);
         let variants = models::discover(root);
-        let chosen = models::choose(&variants, gpu_usable, precision, models::Family::ParakeetTdt)
-            .ok_or_else(|| AsrError::ModelMissing(root.display().to_string()))?;
+        let chosen = models::choose(
+            &variants,
+            gpu_usable,
+            precision,
+            models::Family::ParakeetTdt,
+        )
+        .ok_or_else(|| AsrError::ModelMissing(root.display().to_string()))?;
 
         tracing::info!(
             dir = %chosen.dir.display(),
@@ -51,7 +58,11 @@ impl Parakeet {
         );
         // Without a usable GPU there is nothing for the accelerator to do, and
         // asking for one only produces a warning the user cannot act on.
-        let effective = if gpu_usable { accelerator } else { Accelerator::Cpu };
+        let effective = if gpu_usable {
+            accelerator
+        } else {
+            Accelerator::Cpu
+        };
         Self::load(&chosen.dir, effective)
     }
 
@@ -66,7 +77,7 @@ impl Parakeet {
 
         let (provider, requested) = provider_for(accelerator);
         let config = ExecutionConfig::new().with_execution_provider(provider);
-        let requested = requested.to_owned();
+        let requested = requested.clone();
 
         #[cfg(feature = "cuda")]
         let failures_before = crate::cuda::registration_failures();

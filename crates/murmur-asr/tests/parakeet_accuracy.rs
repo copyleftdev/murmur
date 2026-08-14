@@ -16,25 +16,41 @@ use std::time::Duration;
 const SAMPLE: &str = "../../assets/jfk.wav";
 
 const EXPECTED_WORDS: &[&str] = &[
-    "fellow", "americans", "ask", "not", "what", "your", "country", "can", "do", "for", "you",
+    "fellow",
+    "americans",
+    "ask",
+    "not",
+    "what",
+    "your",
+    "country",
+    "can",
+    "do",
+    "for",
+    "you",
 ];
 
 fn model_dir() -> PathBuf {
     let configured = AsrConfig::default().model_dir;
-    let expanded = configured.strip_prefix("~/").map_or_else(
+
+    configured.strip_prefix("~/").map_or_else(
         || PathBuf::from(&configured),
         |rest| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(rest),
-    );
-    expanded
+    )
 }
 
 fn read_wav(path: &Path) -> Vec<f32> {
     let mut reader = hound::WavReader::open(path).expect("opening the sample");
     let spec = reader.spec();
-    assert_eq!(spec.sample_rate, 16_000, "fixture must already be at the target rate");
+    assert_eq!(
+        spec.sample_rate, 16_000,
+        "fixture must already be at the target rate"
+    );
     assert_eq!(spec.channels, 1, "fixture must be mono");
     let scale = f32::from(i16::MAX);
-    reader.samples::<i16>().map(|s| f32::from(s.expect("sample")) / scale).collect()
+    reader
+        .samples::<i16>()
+        .map(|s| f32::from(s.expect("sample")) / scale)
+        .collect()
 }
 
 /// `Some(model)` when a model is installed, `None` when the test should skip.
@@ -59,7 +75,11 @@ fn the_model_transcribes_known_speech_correctly() {
     let lowered = transcript.text.to_lowercase();
 
     for word in EXPECTED_WORDS {
-        assert!(lowered.contains(word), "{word:?} missing from {:?}", transcript.text);
+        assert!(
+            lowered.contains(word),
+            "{word:?} missing from {:?}",
+            transcript.text
+        );
     }
 }
 
@@ -75,7 +95,11 @@ fn the_model_punctuates_and_capitalises_without_help_from_the_formatter() {
         transcript.text
     );
     assert!(
-        transcript.text.chars().next().is_some_and(char::is_uppercase),
+        transcript
+            .text
+            .chars()
+            .next()
+            .is_some_and(char::is_uppercase),
         "expected a capitalised opening: {:?}",
         transcript.text
     );

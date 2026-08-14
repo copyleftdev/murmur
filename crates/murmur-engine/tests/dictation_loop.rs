@@ -24,7 +24,10 @@ struct Spy {
 
 impl Spy {
     fn failing() -> Self {
-        Self { fail: true, ..Self::default() }
+        Self {
+            fail: true,
+            ..Self::default()
+        }
     }
 
     fn emitted(&self) -> Vec<String> {
@@ -53,11 +56,19 @@ struct Watcher {
 
 impl Watcher {
     fn saw_error(&self) -> bool {
-        self.huds.lock().unwrap().iter().any(|h| h.starts_with("error:"))
+        self.huds
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|h| h.starts_with("error:"))
     }
 
     fn saw_partial(&self) -> bool {
-        self.huds.lock().unwrap().iter().any(|h| h.starts_with("partial"))
+        self.huds
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|h| h.starts_with("partial"))
     }
 
     fn seen(&self) -> Vec<String> {
@@ -83,7 +94,10 @@ impl Surface for Watcher {
 /// The engine reads a real clock, so tests hold the key for a few milliseconds
 /// rather than pretending time does not pass.
 fn tuning() -> Tuning {
-    Tuning { tap_max: Millis(0), ..Tuning::default() }
+    Tuning {
+        tap_max: Millis(0),
+        ..Tuning::default()
+    }
 }
 
 fn engine(recorder: Box<dyn Recorder>, asr: Mock, sink: Spy, watcher: Watcher) -> Engine {
@@ -102,11 +116,23 @@ fn drive(engine: &mut Engine, holds: &[Duration]) {
     let holds = holds.to_vec();
     std::thread::spawn(move || {
         for hold in holds {
-            if tx.send(TriggerEvent { edge: Edge::Down, at: Instant::now() }).is_err() {
+            if tx
+                .send(TriggerEvent {
+                    edge: Edge::Down,
+                    at: Instant::now(),
+                })
+                .is_err()
+            {
                 return;
             }
             std::thread::sleep(hold);
-            if tx.send(TriggerEvent { edge: Edge::Up, at: Instant::now() }).is_err() {
+            if tx
+                .send(TriggerEvent {
+                    edge: Edge::Up,
+                    at: Instant::now(),
+                })
+                .is_err()
+            {
                 return;
             }
             std::thread::sleep(Duration::from_millis(20));
@@ -120,8 +146,12 @@ const HOLD: Duration = Duration::from_millis(40);
 #[test]
 fn a_hold_puts_the_transcript_at_the_cursor() {
     let sink = Spy::default();
-    let mut engine =
-        engine(Box::new(Fixture::speaking()), Mock::new(["Hello world."]), sink.clone(), Watcher::default());
+    let mut engine = engine(
+        Box::new(Fixture::speaking()),
+        Mock::new(["Hello world."]),
+        sink.clone(),
+        Watcher::default(),
+    );
     drive(&mut engine, &[HOLD]);
 
     assert_eq!(sink.emitted(), vec!["Hello world. "]);
@@ -141,7 +171,11 @@ fn a_tap_shorter_than_the_threshold_types_nothing() {
     );
     drive(&mut engine, &[Duration::from_millis(30)]);
 
-    assert!(sink.emitted().is_empty(), "a stray tap typed {:?}", sink.emitted());
+    assert!(
+        sink.emitted().is_empty(),
+        "a stray tap typed {:?}",
+        sink.emitted()
+    );
     assert_eq!(engine.stats().utterances(), 0);
 }
 
@@ -149,12 +183,19 @@ fn a_tap_shorter_than_the_threshold_types_nothing() {
 fn silence_types_nothing_but_still_completes_cleanly() {
     let sink = Spy::default();
     let watcher = Watcher::default();
-    let mut engine =
-        engine(Box::new(Fixture::silent()), Mock::default(), sink.clone(), watcher.clone());
+    let mut engine = engine(
+        Box::new(Fixture::silent()),
+        Mock::default(),
+        sink.clone(),
+        watcher.clone(),
+    );
     drive(&mut engine, &[HOLD]);
 
     assert!(sink.emitted().is_empty());
-    assert!(!watcher.saw_error(), "silence must not be reported as a failure");
+    assert!(
+        !watcher.saw_error(),
+        "silence must not be reported as a failure"
+    );
 }
 
 #[test]
@@ -175,12 +216,19 @@ fn consecutive_dictations_flow_into_one_another() {
 fn a_failing_transcriber_reports_and_the_next_dictation_still_works() {
     let sink = Spy::default();
     let watcher = Watcher::default();
-    let mut engine =
-        engine(Box::new(Fixture::speaking()), Mock::failing(), sink.clone(), watcher.clone());
+    let mut engine = engine(
+        Box::new(Fixture::speaking()),
+        Mock::failing(),
+        sink.clone(),
+        watcher.clone(),
+    );
     drive(&mut engine, &[HOLD, HOLD]);
 
     assert!(sink.emitted().is_empty());
-    assert!(watcher.saw_error(), "a failed transcription must be surfaced, not swallowed");
+    assert!(
+        watcher.saw_error(),
+        "a failed transcription must be surfaced, not swallowed"
+    );
 }
 
 #[test]
@@ -217,8 +265,12 @@ fn a_failing_recorder_is_reported_rather_than_crashing_the_loop() {
 #[test]
 fn recording_starts_on_press_and_never_outlives_the_utterance() {
     let fixture = Fixture::speaking();
-    let mut engine =
-        engine(Box::new(fixture), Mock::default(), Spy::default(), Watcher::default());
+    let mut engine = engine(
+        Box::new(fixture),
+        Mock::default(),
+        Spy::default(),
+        Watcher::default(),
+    );
     drive(&mut engine, &[HOLD, HOLD, HOLD]);
 
     assert_eq!(engine.stats().utterances(), 3);
@@ -291,7 +343,11 @@ fn live_partials_appear_while_the_user_is_still_speaking() {
         "no partial text was shown during a 700ms hold: {:?}",
         watcher.seen()
     );
-    assert_eq!(sink.emitted(), vec!["live text "], "the final text still lands once");
+    assert_eq!(
+        sink.emitted(),
+        vec!["live text "],
+        "the final text still lands once"
+    );
 }
 
 #[test]

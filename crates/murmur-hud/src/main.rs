@@ -21,7 +21,11 @@ use worker::{Landed, Phase, Ready};
 /// Everything that can change what the overlay shows.
 #[derive(Debug, Clone)]
 pub enum Message {
-    Ready { trigger: String, microphone: String, transcriber: String },
+    Ready {
+        trigger: String,
+        microphone: String,
+        transcriber: String,
+    },
     Hud(Hud),
     Level(f32),
     Emitted(String),
@@ -48,9 +52,17 @@ struct Murmur {
 impl Murmur {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::Ready { trigger, microphone, transcriber } => {
+            Message::Ready {
+                trigger,
+                microphone,
+                transcriber,
+            } => {
                 self.phase = Phase::Idle;
-                self.ready = Some(Ready { trigger, microphone, transcriber });
+                self.ready = Some(Ready {
+                    trigger,
+                    microphone,
+                    transcriber,
+                });
             }
             Message::Hud(hud) => {
                 if let Hud::Partial { text } = &hud {
@@ -67,7 +79,10 @@ impl Murmur {
             }
             Message::Level(level) => self.level = level,
             Message::Emitted(text) => {
-                self.landed = Some(Landed { text, release_to_text: None });
+                self.landed = Some(Landed {
+                    text,
+                    release_to_text: None,
+                });
             }
             Message::Completed(latency) => {
                 if let Some(landed) = &mut self.landed {
@@ -97,10 +112,13 @@ impl Murmur {
         let body: Element<'_, Message> = match &self.phase {
             Phase::Starting => theme::muted("starting\u{2026}").into(),
             Phase::Failed(reason) => theme::failed(reason).into(),
-            Phase::Thinking => row![theme::dot(theme::THINKING), theme::muted("transcribing\u{2026}")]
-                .spacing(12)
-                .align_y(iced::Center)
-                .into(),
+            Phase::Thinking => row![
+                theme::dot(theme::THINKING),
+                theme::muted("transcribing\u{2026}")
+            ]
+            .spacing(12)
+            .align_y(iced::Center)
+            .into(),
             Phase::Listening { locked } => row![
                 theme::dot(theme::LISTENING),
                 theme::meter(self.level),
@@ -116,24 +134,31 @@ impl Murmur {
         // titlebar to grab, so without this it can only ever sit where it
         // started -- which is not acceptable for something that floats over
         // whatever you are working in.
-        let draggable = mouse_area(row![body, Space::new().width(Length::Fill)].align_y(iced::Center))
-            .on_press(Message::Drag);
+        let draggable =
+            mouse_area(row![body, Space::new().width(Length::Fill)].align_y(iced::Center))
+                .on_press(Message::Drag);
 
         container(
-            row![draggable, hide_button(), close_button()].spacing(4).align_y(iced::Center),
+            row![draggable, hide_button(), close_button()]
+                .spacing(4)
+                .align_y(iced::Center),
         )
-            .style(theme::pill)
-            .padding([14, 16])
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .align_y(iced::Center)
-            .into()
+        .style(theme::pill)
+        .padding([14, 16])
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_y(iced::Center)
+        .into()
     }
 
     /// While listening: the words so far, or what to do if there are none yet.
     fn speech_or_hint(&self, locked: bool) -> Element<'_, Message> {
         if self.partial.is_empty() {
-            let hint = if locked { "hands-free \u{2014} press again to stop" } else { "speak\u{2026}" };
+            let hint = if locked {
+                "hands-free \u{2014} press again to stop"
+            } else {
+                "speak\u{2026}"
+            };
             theme::muted(hint).into()
         } else {
             theme::speech(self.partial.clone()).into()
@@ -142,34 +167,31 @@ impl Murmur {
 
     /// While idle: the last result if there is one, otherwise how to start.
     fn idle_view(&self) -> Element<'_, Message> {
-        match &self.landed {
-            Some(landed) => {
-                let timing = landed
-                    .release_to_text
-                    .map_or_else(String::new, |latency| format!("{latency}"));
-                row![
-                    theme::dot(theme::DONE),
-                    theme::speech(landed.text.trim().to_owned()),
-                    theme::muted(timing),
-                ]
+        if let Some(landed) = &self.landed {
+            let timing = landed
+                .release_to_text
+                .map_or_else(String::new, |latency| format!("{latency}"));
+            row![
+                theme::dot(theme::DONE),
+                theme::speech(landed.text.trim().to_owned()),
+                theme::muted(timing),
+            ]
+            .spacing(12)
+            .align_y(iced::Center)
+            .into()
+        } else {
+            let hint = self.ready.as_ref().map_or_else(
+                || "waiting for the engine".to_owned(),
+                |ready| format!("hold {} and speak", ready.trigger),
+            );
+            row![theme::dot(theme::IDLE), theme::muted(hint)]
                 .spacing(12)
                 .align_y(iced::Center)
                 .into()
-            }
-            None => {
-                let hint = self.ready.as_ref().map_or_else(
-                    || "waiting for the engine".to_owned(),
-                    |ready| format!("hold {} and speak", ready.trigger),
-                );
-                row![theme::dot(theme::IDLE), theme::muted(hint)]
-                    .spacing(12)
-                    .align_y(iced::Center)
-                    .into()
-            }
         }
     }
 
-    fn subscription(&self) -> Subscription<Message> {
+    fn subscription(_state: &Self) -> Subscription<Message> {
         // Escape closes it too, for the moment after start-up when the overlay
         // still holds focus -- which is the moment a user most wants it gone.
         let escape = iced::event::listen_with(|event, _status, _window| {
@@ -186,7 +208,7 @@ impl Murmur {
         Subscription::batch([Subscription::run(engine), Subscription::run(panel), escape])
     }
 
-    fn title(&self) -> String {
+    fn title(_state: &Self) -> String {
         "Murmur".to_owned()
     }
 }
@@ -270,8 +292,10 @@ fn expand_home(input: &str) -> std::path::PathBuf {
     input.strip_prefix("~/").map_or_else(
         || std::path::PathBuf::from(input),
         |rest| {
-            std::env::var_os("HOME")
-                .map_or_else(|| std::path::PathBuf::from(input), |home| std::path::PathBuf::from(home).join(rest))
+            std::env::var_os("HOME").map_or_else(
+                || std::path::PathBuf::from(input),
+                |home| std::path::PathBuf::from(home).join(rest),
+            )
         },
     )
 }
@@ -307,7 +331,10 @@ fn place(window: iced::Size, screen: iced::Size) -> iced::Point {
     };
 
     tracing::debug!(?window, ?screen, %anchor, "placing the overlay");
-    iced::Point::new(x.max(0.0), (screen.height - window.height - margin).max(0.0))
+    iced::Point::new(
+        x.max(0.0),
+        (screen.height - window.height - margin).max(0.0),
+    )
 }
 
 /// The width of one monitor, when several are exposed as a single wide screen.
@@ -321,16 +348,18 @@ fn monitor_width(screen: iced::Size) -> f32 {
     if screen.height <= 0.0 {
         return screen.width;
     }
-    let panels = (screen.width / (screen.height * 16.0 / 9.0)).round().max(1.0);
+    let panels = (screen.width / (screen.height * 16.0 / 9.0))
+        .round()
+        .max(1.0);
     screen.width / panels
 }
 
-/// Prefer XWayland unless told otherwise.
+/// Prefer `XWayland` unless told otherwise.
 ///
 /// Wayland gives a client no way to place its own window: `xdg-shell` has no
 /// concept of a position, so the compositor decides — and GNOME decides on the
 /// middle of the screen, which is the one place an overlay must not be. Going
-/// through XWayland restores absolute placement, and nothing else Murmur does
+/// through `XWayland` restores absolute placement, and nothing else Murmur does
 /// touches Wayland: injection is `uinput`, the trigger is evdev, and audio is
 /// ALSA. Set `MURMUR_HUD_WAYLAND=1` to keep the native surface and place it by
 /// dragging instead.
@@ -351,10 +380,11 @@ fn prefer_positionable_backend() {
 /// Everything lands under the user's own data directory: no root, and removing
 /// the two files removes every trace.
 fn install() -> std::io::Result<()> {
-    let home = std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_default();
-    let data = std::env::var_os("XDG_DATA_HOME")
+    let home = std::env::var_os("HOME")
         .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| home.join(".local/share"));
+        .unwrap_or_default();
+    let data = std::env::var_os("XDG_DATA_HOME")
+        .map_or_else(|| home.join(".local/share"), std::path::PathBuf::from);
 
     let icons = data.join("icons/hicolor/scalable/apps");
     std::fs::create_dir_all(&icons)?;
@@ -382,7 +412,11 @@ fn install() -> std::io::Result<()> {
         ),
     )?;
 
-    println!("installed:\n  {}\n  {}", icon_path.display(), entry.display());
+    println!(
+        "installed:\n  {}\n  {}",
+        icon_path.display(),
+        entry.display()
+    );
     println!("\nMurmur now appears in your applications, and in the panel while running.");
     Ok(())
 }
@@ -459,7 +493,9 @@ mod tests {
     fn live_text_is_kept_while_listening_and_dropped_afterwards() {
         let mut app = ready();
         let _ = app.update(Message::Hud(Hud::Listening { mode: Mode::Hold }));
-        let _ = app.update(Message::Hud(Hud::Partial { text: "hello there".into() }));
+        let _ = app.update(Message::Hud(Hud::Partial {
+            text: "hello there".into(),
+        }));
         assert_eq!(app.partial, "hello there");
 
         let _ = app.update(Message::Hud(Hud::Thinking));
@@ -473,7 +509,10 @@ mod tests {
         assert!(app.landed.is_some());
 
         let _ = app.update(Message::Hud(Hud::Listening { mode: Mode::Hold }));
-        assert!(app.landed.is_none(), "the last result lingered into the next dictation");
+        assert!(
+            app.landed.is_none(),
+            "the last result lingered into the next dictation"
+        );
     }
 
     #[test]
@@ -511,10 +550,13 @@ mod tests {
     fn snapshot(app: &Murmur, name: &str) {
         // The real window size, so a snapshot shows what a user would see
         // rather than the same widgets adrift in a much larger frame.
-        let mut simulator = iced_test::Simulator::with_size(iced::Settings::default(), WINDOW, app.view());
+        let mut simulator =
+            iced_test::Simulator::with_size(iced::Settings::default(), WINDOW, app.view());
         let snapshot = simulator.snapshot(&iced::Theme::Dark).expect("rendering");
         assert!(
-            snapshot.matches_image(format!("snapshots/{name}")).expect("comparing"),
+            snapshot
+                .matches_image(format!("snapshots/{name}"))
+                .expect("comparing"),
             "{name} no longer looks the way it did; \
              delete crates/murmur-hud/snapshots/{name}.png to accept the new design"
         );
@@ -552,8 +594,14 @@ mod tests {
             let screen = iced::Size::new(screen.0, screen.1);
             let point = place(WINDOW, screen);
             assert!(point.x >= 0.0 && point.y >= 0.0, "{screen:?} -> {point:?}");
-            assert!(point.x + WINDOW.width <= screen.width, "{screen:?} -> {point:?}");
-            assert!(point.y + WINDOW.height <= screen.height, "{screen:?} -> {point:?}");
+            assert!(
+                point.x + WINDOW.width <= screen.width,
+                "{screen:?} -> {point:?}"
+            );
+            assert!(
+                point.y + WINDOW.height <= screen.height,
+                "{screen:?} -> {point:?}"
+            );
         }
     }
 
@@ -615,13 +663,17 @@ mod tests {
             },
             Message::Hud(Hud::Listening { mode: Mode::Hold }),
             Message::Level(0.4),
-            Message::Hud(Hud::Partial { text: "words".into() }),
+            Message::Hud(Hud::Partial {
+                text: "words".into(),
+            }),
             Message::Hud(Hud::Listening { mode: Mode::Locked }),
             Message::Hud(Hud::Thinking),
             Message::Emitted("done".into()),
             Message::Completed(Millis(99)),
             Message::Hud(Hud::Hidden),
-            Message::Hud(Hud::Error { message: "boom".into() }),
+            Message::Hud(Hud::Error {
+                message: "boom".into(),
+            }),
         ] {
             let _ = app.update(message);
             let _ = app.view();

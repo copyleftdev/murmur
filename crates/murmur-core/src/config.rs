@@ -26,7 +26,10 @@ pub struct TriggerConfig {
 
 impl Default for TriggerConfig {
     fn default() -> Self {
-        Self { key: "RIGHTCTRL".into(), hands_free: true }
+        Self {
+            key: "RIGHTCTRL".into(),
+            hands_free: true,
+        }
     }
 }
 
@@ -43,7 +46,11 @@ pub struct AudioConfig {
 
 impl Default for AudioConfig {
     fn default() -> Self {
-        Self { device: None, preroll_ms: 300, vad: true }
+        Self {
+            device: None,
+            preroll_ms: 300,
+            vad: true,
+        }
     }
 }
 
@@ -147,14 +154,14 @@ impl Default for PolishConfig {
 pub enum InjectBackend {
     /// Probe every backend and use the best one available on this desktop.
     Auto,
-    /// XDG RemoteDesktop portal: full Unicode on Wayland, one consent prompt.
+    /// XDG `RemoteDesktop` portal: full Unicode on Wayland, one consent prompt.
     Portal,
     /// A kernel-level virtual keyboard via `/dev/uinput`. No consent, no compositor
     /// cooperation, but limited to what the active layout can type.
     Uinput,
     /// Set the clipboard and synthesise a paste. Fastest for long text.
     Clipboard,
-    /// XTEST, for X11 and XWayland sessions.
+    /// XTEST, for X11 and `XWayland` sessions.
     X11,
 }
 
@@ -221,6 +228,9 @@ mod tests {
 
     #[test]
     fn polish_is_off_by_default() {
-        assert!(!Config::default().polish.enabled, "latency budget must be opt-out, not opt-in");
+        assert!(
+            !Config::default().polish.enabled,
+            "latency budget must be opt-out, not opt-in"
+        );
     }
 }

@@ -65,7 +65,11 @@ fn tail(text: &str, width: usize) -> String {
 fn meter(level: f32) -> String {
     const CELLS: usize = 12;
     let filled = (level.clamp(0.0, 1.0) * CELLS as f32).round() as usize;
-    format!("{}{}", "\u{2588}".repeat(filled), "\u{2591}".repeat(CELLS - filled))
+    format!(
+        "{}{}",
+        "\u{2588}".repeat(filled),
+        "\u{2591}".repeat(CELLS - filled)
+    )
 }
 
 impl Surface for Terminal {
@@ -84,7 +88,7 @@ impl Surface for Terminal {
                 self.line(&format!("\u{25cf} {label}  {}", meter(0.0)));
             }
             Hud::Partial { text } => {
-                self.partial = text.clone();
+                self.partial.clone_from(text);
                 self.capturing(0.0);
             }
             Hud::Thinking => self.line("\u{25d0} transcribing\u{2026}"),
@@ -107,9 +111,11 @@ impl Surface for Terminal {
     }
 
     fn completed(&mut self, stats: &Stats) {
-        if let (Some(total), Some(transcribe), Some(inject)) =
-            (stats.release_to_text(100.0), stats.transcribe(100.0), stats.inject(100.0))
-        {
+        if let (Some(total), Some(transcribe), Some(inject)) = (
+            stats.release_to_text(100.0),
+            stats.transcribe(100.0),
+            stats.inject(100.0),
+        ) {
             let _ = stats;
             eprintln!(
                 "  \u{2937} release \u{2192} text {total} (transcribe {transcribe}, inject {inject})"
@@ -126,7 +132,11 @@ mod tests {
     fn the_meter_spans_empty_to_full_without_overflowing() {
         assert_eq!(meter(0.0).chars().count(), 12);
         assert_eq!(meter(1.0).chars().count(), 12);
-        assert_eq!(meter(2.0).chars().count(), 12, "a hot mic must not widen the meter");
+        assert_eq!(
+            meter(2.0).chars().count(),
+            12,
+            "a hot mic must not widen the meter"
+        );
         assert_eq!(meter(-1.0).chars().count(), 12);
         assert!(meter(0.0).starts_with('\u{2591}'));
         assert!(meter(1.0).starts_with('\u{2588}'));
@@ -135,26 +145,40 @@ mod tests {
     #[test]
     fn live_text_survives_a_meter_repaint() {
         let mut terminal = Terminal::default();
-        terminal.show(&Hud::Partial { text: "hello there".into() });
+        terminal.show(&Hud::Partial {
+            text: "hello there".into(),
+        });
         terminal.level(0.5);
-        assert_eq!(terminal.partial, "hello there", "the meter erased the live text");
+        assert_eq!(
+            terminal.partial, "hello there",
+            "the meter erased the live text"
+        );
     }
 
     #[test]
     fn live_text_is_cleared_when_the_utterance_ends() {
         let mut terminal = Terminal::default();
-        terminal.show(&Hud::Partial { text: "hello".into() });
+        terminal.show(&Hud::Partial {
+            text: "hello".into(),
+        });
         terminal.show(&Hud::Hidden);
         assert!(terminal.partial.is_empty());
 
-        terminal.show(&Hud::Partial { text: "hello".into() });
+        terminal.show(&Hud::Partial {
+            text: "hello".into(),
+        });
         terminal.show(&Hud::Listening { mode: Mode::Hold });
-        assert!(terminal.partial.is_empty(), "text from the last utterance leaked into the next");
+        assert!(
+            terminal.partial.is_empty(),
+            "text from the last utterance leaked into the next"
+        );
     }
 
     #[test]
     fn long_live_text_keeps_the_end_where_the_new_words_are() {
-        let long: String = std::iter::repeat_n('a', 40).chain("THE END".chars()).collect();
+        let long: String = std::iter::repeat_n('a', 40)
+            .chain("THE END".chars())
+            .collect();
         let shown = tail(&long, 20);
         assert!(shown.ends_with("THE END"), "{shown:?}");
         assert_eq!(shown.chars().count(), 20);

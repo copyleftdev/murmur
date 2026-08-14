@@ -110,9 +110,9 @@ impl Phase {
     pub fn from_hud(hud: &Hud, previous: &Self) -> Self {
         match hud {
             Hud::Hidden => Self::Idle,
-            Hud::Listening { mode } => {
-                Self::Listening { locked: matches!(mode, murmur_core::Mode::Locked) }
-            }
+            Hud::Listening { mode } => Self::Listening {
+                locked: matches!(mode, murmur_core::Mode::Locked),
+            },
             // Live text arrives while listening and must not change the phase,
             // or the meter would vanish the moment the first word appeared.
             Hud::Partial { .. } => previous.clone(),
@@ -137,8 +137,12 @@ mod tests {
     #[test]
     fn live_text_does_not_change_the_phase() {
         let listening = Phase::Listening { locked: false };
-        let after =
-            Phase::from_hud(&Hud::Partial { text: "hello".into() }, &listening);
+        let after = Phase::from_hud(
+            &Hud::Partial {
+                text: "hello".into(),
+            },
+            &listening,
+        );
         assert_eq!(after, listening, "the meter would vanish on the first word");
     }
 
@@ -152,7 +156,12 @@ mod tests {
             Phase::Listening { locked: true }
         );
         assert!(matches!(
-            Phase::from_hud(&Hud::Error { message: "x".into() }, &idle),
+            Phase::from_hud(
+                &Hud::Error {
+                    message: "x".into()
+                },
+                &idle
+            ),
             Phase::Failed(_)
         ));
     }

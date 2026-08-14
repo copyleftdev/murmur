@@ -67,9 +67,32 @@ pub fn key_for(c: char) -> Option<(KeyCode, bool)> {
 fn letter(lower: char) -> KeyCode {
     use KeyCode as K;
     const LETTERS: [KeyCode; 26] = [
-        K::KEY_A, K::KEY_B, K::KEY_C, K::KEY_D, K::KEY_E, K::KEY_F, K::KEY_G, K::KEY_H, K::KEY_I,
-        K::KEY_J, K::KEY_K, K::KEY_L, K::KEY_M, K::KEY_N, K::KEY_O, K::KEY_P, K::KEY_Q, K::KEY_R,
-        K::KEY_S, K::KEY_T, K::KEY_U, K::KEY_V, K::KEY_W, K::KEY_X, K::KEY_Y, K::KEY_Z,
+        K::KEY_A,
+        K::KEY_B,
+        K::KEY_C,
+        K::KEY_D,
+        K::KEY_E,
+        K::KEY_F,
+        K::KEY_G,
+        K::KEY_H,
+        K::KEY_I,
+        K::KEY_J,
+        K::KEY_K,
+        K::KEY_L,
+        K::KEY_M,
+        K::KEY_N,
+        K::KEY_O,
+        K::KEY_P,
+        K::KEY_Q,
+        K::KEY_R,
+        K::KEY_S,
+        K::KEY_T,
+        K::KEY_U,
+        K::KEY_V,
+        K::KEY_W,
+        K::KEY_X,
+        K::KEY_Y,
+        K::KEY_Z,
     ];
     LETTERS[(lower as u8 - b'a') as usize]
 }
@@ -175,7 +198,11 @@ mod tests {
             all_keys().iter().map(|k| k.code()).collect();
         for b in 0x20u8..0x7f {
             let (key, _) = key_for(b as char).unwrap();
-            assert!(declared.contains(&key.code()), "{:?} not declared", b as char);
+            assert!(
+                declared.contains(&key.code()),
+                "{:?} not declared",
+                b as char
+            );
         }
         assert!(declared.contains(&KeyCode::KEY_LEFTCTRL.code()));
         assert!(declared.contains(&KeyCode::KEY_LEFTSHIFT.code()));

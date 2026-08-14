@@ -50,6 +50,8 @@ pub trait Surface {
     fn completed(&mut self, _stats: &Stats) {}
 }
 
+/// Boxed devices cannot be `Debug`, so this reports what it is rather than
+/// what it holds.
 pub struct Engine {
     session: Session,
     recorder: Box<dyn Recorder>,
@@ -61,7 +63,17 @@ pub struct Engine {
     origin: Instant,
 }
 
+impl std::fmt::Debug for Engine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Engine")
+            .field("phase", &self.session.phase())
+            .field("utterances", &self.stats.utterances())
+            .finish_non_exhaustive()
+    }
+}
+
 impl Engine {
+    #[must_use]
     pub fn new(
         session: Session,
         recorder: Box<dyn Recorder>,
@@ -102,19 +114,21 @@ impl Engine {
     pub fn run(&mut self, triggers: &Receiver<TriggerEvent>) -> Result<()> {
         loop {
             match triggers.recv_timeout(TICK) {
-                Ok(TriggerEvent { edge: Edge::Down, .. }) => {
-                    self.pump(Event::TriggerDown(self.now()))?;
+                Ok(TriggerEvent {
+                    edge: Edge::Down, ..
+                }) => {
+                    self.pump(Event::TriggerDown(self.now()));
                 }
                 Ok(TriggerEvent { edge: Edge::Up, .. }) => {
-                    self.pump(Event::TriggerUp(self.now()))?;
+                    self.pump(Event::TriggerUp(self.now()));
                 }
                 Err(RecvTimeoutError::Timeout) => {
                     if self.session.is_capturing() {
                         self.surface.level(self.recorder.level());
                         self.request_partial();
                     }
-                    self.deliver_partials()?;
-                    self.pump(Event::Tick(self.now()))?;
+                    self.deliver_partials();
+                    self.pump(Event::Tick(self.now()));
                 }
                 Err(RecvTimeoutError::Disconnected) => return Ok(()),
             }
@@ -133,12 +147,15 @@ impl Engine {
 
     /// Show whatever the worker finished. Stale text is dropped by the session,
     /// which knows which utterance is current and this thread does not.
-    fn deliver_partials(&mut self) -> Result<()> {
+    fn deliver_partials(&mut self) {
         for reply in self.partials.collect() {
             tracing::debug!(id = reply.id, took_ms = reply.took.as_millis(), "partial");
-            self.pump(Event::Partial { at: self.now(), id: reply.id, text: reply.text })?;
+            self.pump(Event::Partial {
+                at: self.now(),
+                id: reply.id,
+                text: reply.text,
+            });
         }
-        Ok(())
     }
 
     /// Feed one event in and run the resulting work to completion.
@@ -146,20 +163,23 @@ impl Engine {
     /// Commands can produce further events — a finished transcription becomes a
     /// `Final`, which becomes an `Inject`, which becomes an `Injected` — so this
     /// drains a queue rather than recursing.
-    fn pump(&mut self, event: Event) -> Result<()> {
+    fn pump(&mut self, event: Event) {
         let mut queue = VecDeque::from([event]);
         while let Some(event) = queue.pop_front() {
             for command in self.session.handle(event) {
-                if let Some(next) = self.execute(command)? {
+                if let Some(next) = self.execute(command) {
                     queue.push_back(next);
                 }
             }
         }
-        Ok(())
     }
 
-    fn execute(&mut self, command: Command) -> Result<Option<Event>> {
-        Ok(match command {
+    /// Carry out one command, and report whatever fact it produced.
+    ///
+    /// Infallible on purpose: a device failure is an [`Event::Failed`] for the
+    /// session to act on, not an error that ends the loop.
+    fn execute(&mut self, command: Command) -> Option<Event> {
+        match command {
             Command::StartCapture { .. } => {
                 self.partials.reset();
                 self.recorder.begin();
@@ -172,7 +192,11 @@ impl Engine {
             Command::StopCapture { id } => {
                 let at = self.now();
                 match self.transcribe() {
-                    Ok(text) => Some(Event::Final { at: self.now(), id, text }),
+                    Ok(text) => Some(Event::Final {
+                        at: self.now(),
+                        id,
+                        text,
+                    }),
                     Err(message) => Some(Event::Failed {
                         at,
                         id,
@@ -207,7 +231,7 @@ impl Engine {
                 }
                 None
             }
-        })
+        }
     }
 
     /// Take the recording and transcribe it, reporting failure as a message
@@ -233,7 +257,8 @@ impl Engine {
             rtf = transcript.realtime_factor(capture.duration),
             "transcribed"
         );
-        self.stats.record_audio(capture.duration, transcript.elapsed);
+        self.stats
+            .record_audio(capture.duration, transcript.elapsed);
         Ok(transcript.text)
     }
 }

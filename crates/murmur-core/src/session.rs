@@ -14,12 +14,20 @@ pub enum Mode {
     Locked,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Phase {
+    #[default]
     Idle,
-    Capturing { id: UtteranceId, mode: Mode },
-    Finalizing { id: UtteranceId },
-    Injecting { id: UtteranceId },
+    Capturing {
+        id: UtteranceId,
+        mode: Mode,
+    },
+    Finalizing {
+        id: UtteranceId,
+    },
+    Injecting {
+        id: UtteranceId,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,10 +42,26 @@ pub enum Event {
     TriggerDown(Millis),
     TriggerUp(Millis),
     /// A streaming hypothesis, shown in the HUD but never injected.
-    Partial { at: Millis, id: UtteranceId, text: String },
-    Final { at: Millis, id: UtteranceId, text: String },
-    Injected { at: Millis, id: UtteranceId },
-    Failed { at: Millis, id: UtteranceId, stage: Stage, message: String },
+    Partial {
+        at: Millis,
+        id: UtteranceId,
+        text: String,
+    },
+    Final {
+        at: Millis,
+        id: UtteranceId,
+        text: String,
+    },
+    Injected {
+        at: Millis,
+        id: UtteranceId,
+    },
+    Failed {
+        at: Millis,
+        id: UtteranceId,
+        stage: Stage,
+        message: String,
+    },
     /// Abandon the utterance in flight without emitting anything.
     Cancel(Millis),
     Tick(Millis),
@@ -124,16 +148,14 @@ pub struct Session {
     last_latency: Option<Latency>,
 }
 
-impl Default for Phase {
-    fn default() -> Self {
-        Self::Idle
-    }
-}
-
 impl Session {
     #[must_use]
     pub fn new(tuning: Tuning, formatter: Formatter) -> Self {
-        Self { tuning, formatter, ..Self::default() }
+        Self {
+            tuning,
+            formatter,
+            ..Self::default()
+        }
     }
 
     #[must_use]
@@ -159,7 +181,9 @@ impl Session {
             Event::Partial { id, text, .. } => self.on_partial(id, &text),
             Event::Final { at, id, text } => self.on_final(at, id, &text),
             Event::Injected { at, id } => self.on_injected(at, id),
-            Event::Failed { id, stage, message, .. } => self.on_failed(id, stage, &message),
+            Event::Failed {
+                id, stage, message, ..
+            } => self.on_failed(id, stage, &message),
             Event::Cancel(_) => self.on_cancel(),
             Event::Tick(at) => self.on_tick(at),
         }
@@ -171,18 +195,29 @@ impl Session {
                 let double_tapped = self
                     .last_tap
                     .is_some_and(|tap| at.since(tap) <= self.tuning.double_tap_window);
-                let mode = if double_tapped { Mode::Locked } else { Mode::Hold };
+                let mode = if double_tapped {
+                    Mode::Locked
+                } else {
+                    Mode::Hold
+                };
                 self.last_tap = None;
                 self.start_capture(at, mode)
             }
             // In hands-free mode the next press is the stop signal.
-            Phase::Capturing { id, mode: Mode::Locked } => self.stop_capture(at, id),
+            Phase::Capturing {
+                id,
+                mode: Mode::Locked,
+            } => self.stop_capture(at, id),
             _ => Vec::new(),
         }
     }
 
     fn on_up(&mut self, at: Millis) -> Vec<Command> {
-        let Phase::Capturing { id, mode: Mode::Hold } = self.phase else {
+        let Phase::Capturing {
+            id,
+            mode: Mode::Hold,
+        } = self.phase
+        else {
             return Vec::new();
         };
         if at.since(self.marks.down) <= self.tuning.tap_max {
@@ -198,8 +233,14 @@ impl Session {
         self.next_id += 1;
         let id = self.next_id;
         self.phase = Phase::Capturing { id, mode };
-        self.marks = Marks { down: at, ..Marks::default() };
-        vec![Command::StartCapture { id }, Command::Hud(Hud::Listening { mode })]
+        self.marks = Marks {
+            down: at,
+            ..Marks::default()
+        };
+        vec![
+            Command::StartCapture { id },
+            Command::Hud(Hud::Listening { mode }),
+        ]
     }
 
     fn stop_capture(&mut self, at: Millis, id: UtteranceId) -> Vec<Command> {
@@ -217,7 +258,9 @@ impl Session {
     fn on_partial(&mut self, id: UtteranceId, text: &str) -> Vec<Command> {
         let capturing = matches!(self.phase, Phase::Capturing { id: current, .. } if current == id);
         if capturing && !text.is_empty() {
-            vec![Command::Hud(Hud::Partial { text: text.to_owned() })]
+            vec![Command::Hud(Hud::Partial {
+                text: text.to_owned(),
+            })]
         } else {
             Vec::new()
         }
@@ -231,15 +274,12 @@ impl Session {
         let continuation = self
             .last_emit
             .is_some_and(|emit| at.since(emit) <= self.tuning.continuation_window);
-        match self.formatter.format(text, EmitContext { continuation }) {
-            Some(text) => {
-                self.phase = Phase::Injecting { id };
-                vec![Command::Inject { id, text }]
-            }
-            None => {
-                self.phase = Phase::Idle;
-                vec![Command::Hud(Hud::Hidden)]
-            }
+        if let Some(text) = self.formatter.format(text, EmitContext { continuation }) {
+            self.phase = Phase::Injecting { id };
+            vec![Command::Inject { id, text }]
+        } else {
+            self.phase = Phase::Idle;
+            vec![Command::Hud(Hud::Hidden)]
         }
     }
 
@@ -265,7 +305,9 @@ impl Session {
         self.phase = Phase::Idle;
         vec![
             Command::Discard { id },
-            Command::Hud(Hud::Error { message: format!("{stage:?} failed: {message}") }),
+            Command::Hud(Hud::Error {
+                message: format!("{stage:?} failed: {message}"),
+            }),
         ]
     }
 
@@ -281,14 +323,18 @@ impl Session {
 
     fn on_tick(&mut self, at: Millis) -> Vec<Command> {
         match self.phase {
-            Phase::Capturing { id, .. } if at.since(self.marks.down) >= self.tuning.max_utterance => {
+            Phase::Capturing { id, .. }
+                if at.since(self.marks.down) >= self.tuning.max_utterance =>
+            {
                 self.stop_capture(at, id)
             }
             Phase::Finalizing { id } if at.since(self.marks.up) >= self.tuning.finalize_timeout => {
                 self.phase = Phase::Idle;
                 vec![
                     Command::Discard { id },
-                    Command::Hud(Hud::Error { message: "transcription timed out".into() }),
+                    Command::Hud(Hud::Error {
+                        message: "transcription timed out".into(),
+                    }),
                 ]
             }
             _ => Vec::new(),
@@ -320,9 +366,15 @@ mod tests {
         let Phase::Finalizing { id } = s.phase() else {
             panic!("expected Finalizing, got {:?}", s.phase());
         };
-        let out =
-            s.handle(Event::Final { at: Millis(up + 40), id, text: text.to_owned() });
-        s.handle(Event::Injected { at: Millis(up + 70), id });
+        let out = s.handle(Event::Final {
+            at: Millis(up + 40),
+            id,
+            text: text.to_owned(),
+        });
+        s.handle(Event::Injected {
+            at: Millis(up + 70),
+            id,
+        });
         out
     }
 
@@ -346,7 +398,10 @@ mod tests {
         let mut s = session();
         s.handle(Event::TriggerDown(Millis(0)));
         let out = s.handle(Event::TriggerUp(Millis(100)));
-        assert_eq!(out, vec![Command::Discard { id: 1 }, Command::Hud(Hud::Hidden)]);
+        assert_eq!(
+            out,
+            vec![Command::Discard { id: 1 }, Command::Hud(Hud::Hidden)]
+        );
         assert_eq!(s.phase(), Phase::Idle);
     }
 
@@ -397,7 +452,11 @@ mod tests {
         let mut s = session();
         s.handle(Event::TriggerDown(Millis(0)));
         s.handle(Event::TriggerUp(Millis(1_000)));
-        let out = s.handle(Event::Final { at: Millis(1_040), id: 1, text: String::new() });
+        let out = s.handle(Event::Final {
+            at: Millis(1_040),
+            id: 1,
+            text: String::new(),
+        });
         assert_eq!(out, vec![Command::Hud(Hud::Hidden)]);
         assert_eq!(s.phase(), Phase::Idle);
     }
@@ -406,8 +465,17 @@ mod tests {
     fn live_text_is_shown_while_capturing() {
         let mut s = session();
         s.handle(Event::TriggerDown(Millis(0)));
-        let out = s.handle(Event::Partial { at: Millis(300), id: 1, text: "hello".into() });
-        assert_eq!(out, vec![Command::Hud(Hud::Partial { text: "hello".into() })]);
+        let out = s.handle(Event::Partial {
+            at: Millis(300),
+            id: 1,
+            text: "hello".into(),
+        });
+        assert_eq!(
+            out,
+            vec![Command::Hud(Hud::Partial {
+                text: "hello".into()
+            })]
+        );
     }
 
     #[test]
@@ -419,7 +487,11 @@ mod tests {
         // Same utterance, but the user has stopped talking: a partial that was
         // in flight would otherwise repaint a half-finished guess over the
         // "transcribing" state, and then over the final text.
-        let out = s.handle(Event::Partial { at: Millis(1_010), id: 1, text: "half a gue".into() });
+        let out = s.handle(Event::Partial {
+            at: Millis(1_010),
+            id: 1,
+            text: "half a gue".into(),
+        });
         assert!(out.is_empty(), "a stale partial was shown: {out:?}");
     }
 
@@ -428,10 +500,21 @@ mod tests {
         let mut s = session();
         s.handle(Event::TriggerDown(Millis(0)));
         s.handle(Event::TriggerUp(Millis(1_000)));
-        s.handle(Event::Final { at: Millis(1_040), id: 1, text: "done".into() });
+        s.handle(Event::Final {
+            at: Millis(1_040),
+            id: 1,
+            text: "done".into(),
+        });
 
-        let out = s.handle(Event::Partial { at: Millis(1_050), id: 1, text: "don".into() });
-        assert!(out.is_empty(), "a partial overwrote the final text: {out:?}");
+        let out = s.handle(Event::Partial {
+            at: Millis(1_050),
+            id: 1,
+            text: "don".into(),
+        });
+        assert!(
+            out.is_empty(),
+            "a partial overwrote the final text: {out:?}"
+        );
     }
 
     #[test]
@@ -440,8 +523,15 @@ mod tests {
         s.handle(Event::TriggerDown(Millis(0)));
         s.handle(Event::TriggerUp(Millis(1_000)));
         s.handle(Event::Cancel(Millis(1_010)));
-        let out = s.handle(Event::Final { at: Millis(1_050), id: 1, text: "ghost".into() });
-        assert!(out.is_empty(), "cancelled utterance still injected: {out:?}");
+        let out = s.handle(Event::Final {
+            at: Millis(1_050),
+            id: 1,
+            text: "ghost".into(),
+        });
+        assert!(
+            out.is_empty(),
+            "cancelled utterance still injected: {out:?}"
+        );
     }
 
     #[test]
@@ -482,10 +572,19 @@ mod tests {
             let base = i * 10_000;
             s.handle(Event::TriggerDown(Millis(base)));
             s.handle(Event::TriggerUp(Millis(base + 1_000)));
-            let Phase::Finalizing { id } = s.phase() else { panic!() };
+            let Phase::Finalizing { id } = s.phase() else {
+                panic!()
+            };
             ids.push(id);
-            s.handle(Event::Final { at: Millis(base + 1_040), id, text: "x".into() });
-            s.handle(Event::Injected { at: Millis(base + 1_070), id });
+            s.handle(Event::Final {
+                at: Millis(base + 1_040),
+                id,
+                text: "x".into(),
+            });
+            s.handle(Event::Injected {
+                at: Millis(base + 1_070),
+                id,
+            });
         }
         ids.dedup();
         assert_eq!(ids.len(), 50);
@@ -496,14 +595,28 @@ mod tests {
         let mut s = session();
         let noise = [
             Event::TriggerUp(Millis(1)),
-            Event::Injected { at: Millis(2), id: 7 },
-            Event::Final { at: Millis(3), id: 7, text: "x".into() },
-            Event::Partial { at: Millis(4), id: 7, text: "x".into() },
+            Event::Injected {
+                at: Millis(2),
+                id: 7,
+            },
+            Event::Final {
+                at: Millis(3),
+                id: 7,
+                text: "x".into(),
+            },
+            Event::Partial {
+                at: Millis(4),
+                id: 7,
+                text: "x".into(),
+            },
             Event::Cancel(Millis(5)),
             Event::Tick(Millis(6)),
         ];
         for event in noise {
-            assert!(s.handle(event.clone()).is_empty(), "{event:?} leaked a command");
+            assert!(
+                s.handle(event.clone()).is_empty(),
+                "{event:?} leaked a command"
+            );
         }
         assert_eq!(s.phase(), Phase::Idle);
     }
