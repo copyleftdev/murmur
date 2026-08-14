@@ -11,7 +11,7 @@ mod theme;
 mod worker;
 
 use anyhow::Context as _;
-use iced::widget::{container, row};
+use iced::widget::{Space, button, container, mouse_area, row, text};
 use iced::{Element, Length, Subscription, Task};
 use murmur_core::{Config, Hud, Millis};
 use worker::{Landed, Phase, Ready};
@@ -25,6 +25,9 @@ pub enum Message {
     Emitted(String),
     Completed(Millis),
     Fatal(String),
+    /// Move the overlay by dragging the bar.
+    Drag,
+    Quit,
 }
 
 #[derive(Default)]
@@ -66,6 +69,10 @@ impl Murmur {
                 }
             }
             Message::Fatal(reason) => self.phase = Phase::Failed(reason),
+            Message::Drag => {
+                return iced::window::latest().and_then(iced::window::drag);
+            }
+            Message::Quit => return iced::exit(),
         }
         Task::none()
     }
@@ -89,9 +96,16 @@ impl Murmur {
             Phase::Idle => self.idle_view(),
         };
 
-        container(body)
+        // Dragging the bar moves the window. An undecorated overlay has no
+        // titlebar to grab, so without this it can only ever sit where it
+        // started -- which is not acceptable for something that floats over
+        // whatever you are working in.
+        let draggable = mouse_area(row![body, Space::new().width(Length::Fill)].align_y(iced::Center))
+            .on_press(Message::Drag);
+
+        container(row![draggable, close_button()].spacing(8).align_y(iced::Center))
             .style(theme::pill)
-            .padding([14, 20])
+            .padding([14, 16])
             .width(Length::Fill)
             .height(Length::Fill)
             .align_y(iced::Center)
@@ -138,12 +152,33 @@ impl Murmur {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        Subscription::run(engine)
+        // Escape closes it too, for the moment after start-up when the overlay
+        // still holds focus -- which is the moment a user most wants it gone.
+        let escape = iced::event::listen_with(|event, _status, _window| {
+            use iced::keyboard::{Event, Key, key::Named};
+            match event {
+                iced::Event::Keyboard(Event::KeyPressed {
+                    key: Key::Named(Named::Escape),
+                    ..
+                }) => Some(Message::Quit),
+                _ => None,
+            }
+        });
+
+        Subscription::batch([Subscription::run(engine), escape])
     }
 
     fn title(&self) -> String {
         "Murmur".to_owned()
     }
+}
+
+/// The one control the overlay needs: a way to make it go away.
+fn close_button() -> iced::widget::Button<'static, Message> {
+    button(text("\u{00d7}").size(18).center())
+        .on_press(Message::Quit)
+        .padding([2, 8])
+        .style(theme::close)
 }
 
 /// Run the engine on its own thread, forwarding what it does to the interface.
@@ -207,6 +242,72 @@ fn expand_home(input: &str) -> std::path::PathBuf {
 /// The overlay's size. Wide enough for a sentence, short enough to ignore.
 const WINDOW: iced::Size = iced::Size::new(760.0, 78.0);
 
+/// Where the overlay sits.
+///
+/// A plain `fn` because that is what iced's placement hook takes — no captures —
+/// which is why the knobs are environment variables rather than config fields.
+/// Reading them here, at placement time, costs nothing and keeps the hook pure
+/// with respect to its arguments.
+///
+/// The default is bottom-centre, out of the way of what is being worked on.
+/// `MURMUR_HUD_ANCHOR` moves it to a corner instead, which is what you want when
+/// several monitors are exposed as one wide screen and "centre" lands on the seam.
+fn place(window: iced::Size, screen: iced::Size) -> iced::Point {
+    let margin = std::env::var("MURMUR_HUD_MARGIN")
+        .ok()
+        .and_then(|value| value.parse::<f32>().ok())
+        .unwrap_or(96.0);
+
+    let anchor = std::env::var("MURMUR_HUD_ANCHOR").unwrap_or_default();
+    let monitor = monitor_width(screen);
+    let x = match anchor.as_str() {
+        "bottom-left" | "left" => margin,
+        "bottom-right" | "right" => screen.width - window.width - margin,
+        // Centred on the first monitor, not on the whole desktop: on a
+        // multi-monitor setup those are different places, and the second one is
+        // the gap between two screens.
+        _ => (monitor - window.width) / 2.0,
+    };
+
+    tracing::debug!(?window, ?screen, %anchor, "placing the overlay");
+    iced::Point::new(x.max(0.0), (screen.height - window.height - margin).max(0.0))
+}
+
+/// The width of one monitor, when several are exposed as a single wide screen.
+///
+/// X11 reports a dual 1920x1080 setup as one 3840x1080 screen, so centring on it
+/// puts the overlay exactly on the bezel. There is no monitor list available
+/// here, but the count can be inferred: assume the panels are a conventional
+/// aspect and see how many fit. An ultrawide stays one monitor, because 3440x1440
+/// is not close to twice 16:9.
+fn monitor_width(screen: iced::Size) -> f32 {
+    if screen.height <= 0.0 {
+        return screen.width;
+    }
+    let panels = (screen.width / (screen.height * 16.0 / 9.0)).round().max(1.0);
+    screen.width / panels
+}
+
+/// Prefer XWayland unless told otherwise.
+///
+/// Wayland gives a client no way to place its own window: `xdg-shell` has no
+/// concept of a position, so the compositor decides — and GNOME decides on the
+/// middle of the screen, which is the one place an overlay must not be. Going
+/// through XWayland restores absolute placement, and nothing else Murmur does
+/// touches Wayland: injection is `uinput`, the trigger is evdev, and audio is
+/// ALSA. Set `MURMUR_HUD_WAYLAND=1` to keep the native surface and place it by
+/// dragging instead.
+fn prefer_positionable_backend() {
+    if std::env::var_os("MURMUR_HUD_WAYLAND").is_some() {
+        return;
+    }
+    if std::env::var_os("WAYLAND_DISPLAY").is_some() && std::env::var_os("DISPLAY").is_some() {
+        // SAFETY: called before any window, thread or event loop exists.
+        unsafe { std::env::remove_var("WAYLAND_DISPLAY") };
+        tracing::debug!("using XWayland so the overlay can place itself");
+    }
+}
+
 fn main() -> iced::Result {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -216,6 +317,8 @@ fn main() -> iced::Result {
         .with_target(false)
         .with_writer(std::io::stderr)
         .init();
+
+    prefer_positionable_backend();
 
     iced::application(Murmur::default, Murmur::update, Murmur::view)
         .title(Murmur::title)
@@ -227,7 +330,9 @@ fn main() -> iced::Result {
         // Always on top so the overlay is visible over the window being dictated
         // into. It never takes focus, because it is never re-mapped.
         .level(iced::window::Level::AlwaysOnTop)
-        .position(iced::window::Position::Centered)
+        // Bottom-centre, clear of the middle of the screen where the user is
+        // actually working. Centred is where a dialog belongs, not an overlay.
+        .position(iced::window::Position::SpecificWith(place))
         // The window itself paints nothing: the rounded bar is the only thing
         // drawn, so the corners outside its radius stay genuinely transparent.
         .style(|_state, _theme| iced::theme::Style {
@@ -315,6 +420,49 @@ mod tests {
             "{name} no longer looks the way it did; \
              delete crates/murmur-hud/snapshots/{name}.png to accept the new design"
         );
+    }
+
+    #[test]
+    fn one_monitor_is_reported_whole() {
+        for screen in [(1920.0, 1080.0), (2560.0, 1440.0), (1366.0, 768.0)] {
+            let size = iced::Size::new(screen.0, screen.1);
+            assert!((monitor_width(size) - screen.0).abs() < 1.0, "{screen:?}");
+        }
+    }
+
+    #[test]
+    fn a_wide_desktop_is_split_into_its_panels() {
+        assert!((monitor_width(iced::Size::new(3840.0, 1080.0)) - 1920.0).abs() < 1.0);
+        assert!((monitor_width(iced::Size::new(5120.0, 1440.0)) - 2560.0).abs() < 1.0);
+        assert!((monitor_width(iced::Size::new(5760.0, 1080.0)) - 1920.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn an_ultrawide_is_not_mistaken_for_two_screens() {
+        for screen in [(3440.0, 1440.0), (2560.0, 1080.0), (3840.0, 1600.0)] {
+            let size = iced::Size::new(screen.0, screen.1);
+            assert!(
+                (monitor_width(size) - screen.0).abs() < 1.0,
+                "{screen:?} was split, so the overlay would sit off-centre"
+            );
+        }
+    }
+
+    #[test]
+    fn placement_keeps_the_whole_bar_on_screen() {
+        for screen in [(1920.0, 1080.0), (3840.0, 1080.0), (1366.0, 768.0)] {
+            let screen = iced::Size::new(screen.0, screen.1);
+            let point = place(WINDOW, screen);
+            assert!(point.x >= 0.0 && point.y >= 0.0, "{screen:?} -> {point:?}");
+            assert!(point.x + WINDOW.width <= screen.width, "{screen:?} -> {point:?}");
+            assert!(point.y + WINDOW.height <= screen.height, "{screen:?} -> {point:?}");
+        }
+    }
+
+    #[test]
+    fn a_screen_smaller_than_the_bar_still_places_it_somewhere_visible() {
+        let point = place(WINDOW, iced::Size::new(400.0, 200.0));
+        assert!(point.x >= 0.0 && point.y >= 0.0, "{point:?}");
     }
 
     #[test]

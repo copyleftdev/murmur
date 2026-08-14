@@ -246,6 +246,32 @@ looks broken.
 Every state is covered by a snapshot test against a checked-in PNG, so a layout
 regression fails the build. Delete the image to accept a new design.
 
+### Placing it, and closing it
+
+It sits bottom-centre by default, clear of the middle of the screen where you are
+actually working. Three ways to move it:
+
+```sh
+MURMUR_HUD_ANCHOR=bottom-right murmur hud   # or bottom-left
+MURMUR_HUD_MARGIN=32 murmur hud             # distance from the edge
+```
+
+…or just drag the bar. Close it with the `×`, or Escape while it still has focus.
+
+Two things make placement work at all. Wayland gives a client no way to position
+its own window — `xdg-shell` has no concept of a position, so the compositor
+decides, and GNOME decides on the middle of the screen. Murmur therefore runs the
+overlay through XWayland, which restores absolute placement; nothing else it does
+touches Wayland, since injection is `uinput`, the trigger is evdev and audio is
+ALSA. Set `MURMUR_HUD_WAYLAND=1` to keep the native surface and place it by
+dragging instead.
+
+And "centred" is not the centre of the desktop. X11 reports two 1920x1080
+monitors as one 3840x1080 screen, so centring on that puts the bar exactly on the
+bezel. There is no monitor list available at placement time, but the count can be
+inferred by assuming conventional panels and seeing how many fit — which leaves an
+ultrawide correctly undivided, because 3440x1440 is nowhere near twice 16:9.
+
 ### Focus, and why the window never hides
 
 Text is injected into whichever window the compositor considers focused, so an

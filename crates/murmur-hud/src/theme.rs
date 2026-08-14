@@ -102,6 +102,25 @@ fn bar_heights(level: f32) -> [f32; BARS] {
     std::array::from_fn(|i| BAR_MIN + (BAR_MAX - BAR_MIN) * loudness * profile(i))
 }
 
+/// The close control: present, but never competing with the text.
+pub fn close(_theme: &Theme, status: iced::widget::button::Status) -> iced::widget::button::Style {
+    use iced::widget::button::Status;
+
+    let (background, text_color) = match status {
+        Status::Hovered | Status::Pressed => {
+            (Some(Background::Color(Color::from_rgba(1.0, 1.0, 1.0, 0.12))), TEXT)
+        }
+        _ => (None, Color { a: 0.5, ..MUTED }),
+    };
+
+    iced::widget::button::Style {
+        background,
+        text_color,
+        border: Border { radius: 8.0.into(), ..Border::default() },
+        ..iced::widget::button::Style::default()
+    }
+}
+
 /// Words the user actually said.
 ///
 /// Owned rather than borrowed: most of what the overlay shows is assembled for
