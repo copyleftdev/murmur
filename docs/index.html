@@ -4,18 +4,70 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Murmur — voice typing that never leaves your machine</title>
-<meta name="description" content="Local-first voice typing for Linux. Hold a key, speak, release, and the text lands wherever your cursor already is. NVIDIA Parakeet, Rust, iced.">
+<meta name="description" content="Local-first voice typing for Linux. Hold a key, speak, release, and the text lands wherever your cursor already is — transcribed by NVIDIA Parakeet on your own GPU in 36 ms. No account, no upload, Apache-2.0.">
+<link rel="canonical" href="https://copyleftdev.github.io/murmur/">
+<meta name="theme-color" content="#08090d">
+<meta name="color-scheme" content="dark">
+<meta name="author" content="copyleftdev">
+<meta name="keywords" content="voice typing,dictation,speech to text,linux,local,offline,privacy,NVIDIA Parakeet,ONNX Runtime,Rust,Wayland,GNOME,open source">
+
 <link rel="icon" href="brand/murmur-icon.svg" type="image/svg+xml">
-<meta property="og:title" content="Murmur — voice typing that never leaves your machine">
-<meta property="og:description" content="Local-first voice typing for Linux. 36 ms from key release to text, on your own GPU.">
+<link rel="apple-touch-icon" href="brand/icon-180.png">
+<link rel="manifest" href="site.webmanifest">
+
 <meta property="og:type" content="website">
+<meta property="og:site_name" content="Murmur">
+<meta property="og:locale" content="en_GB">
+<meta property="og:url" content="https://copyleftdev.github.io/murmur/">
+<meta property="og:title" content="Murmur — voice typing that never leaves your machine">
+<meta property="og:description" content="Local-first voice typing for Linux. 36 ms from key release to text, transcribed by NVIDIA Parakeet on your own GPU.">
+<meta property="og:image" content="https://copyleftdev.github.io/murmur/brand/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Murmur — voice typing that never leaves your machine. 36 ms release to text, 307x faster than realtime, 0 bytes sent anywhere.">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Murmur — voice typing that never leaves your machine">
+<meta name="twitter:description" content="Local-first voice typing for Linux. 36 ms from key release to text, on your own GPU.">
+<meta name="twitter:image" content="https://copyleftdev.github.io/murmur/brand/og.png">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Murmur",
+  "alternateName": "Murmur voice typing",
+  "applicationCategory": "UtilitiesApplication",
+  "applicationSubCategory": "Speech recognition",
+  "operatingSystem": "Linux",
+  "url": "https://copyleftdev.github.io/murmur/",
+  "downloadUrl": "https://github.com/copyleftdev/murmur/releases/latest",
+  "codeRepository": "https://github.com/copyleftdev/murmur",
+  "programmingLanguage": "Rust",
+  "softwareVersion": "0.1.0",
+  "license": "https://www.apache.org/licenses/LICENSE-2.0",
+  "isAccessibleForFree": true,
+  "image": "https://copyleftdev.github.io/murmur/brand/og.png",
+  "description": "Local-first voice typing for Linux. Hold a key, speak, release, and the text lands wherever your cursor already is, transcribed by NVIDIA Parakeet through ONNX Runtime on your own machine.",
+  "featureList": [
+    "Offline speech recognition with NVIDIA Parakeet TDT",
+    "Push-to-talk and hands-free dictation",
+    "Live partial text while speaking",
+    "Custom dictionary and spoken editing commands",
+    "Types into any application through a uinput virtual keyboard",
+    "Debian and RPM packages"
+  ],
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "author": { "@type": "Person", "name": "copyleftdev", "url": "https://github.com/copyleftdev" }
+}
+</script>
 <style>
 /* No web fonts, no analytics, no third-party anything. A page for a product
    whose whole claim is that nothing leaves your machine should not open eleven
    connections to load itself. */
 :root{
   --bg:#08090d; --surface:#101219; --surface-2:#161923; --line:#232736;
-  --ink:#eef0f3; --muted:#8b91a3; --faint:#5d6273;
+  --ink:#eef0f3; --muted:#8b91a3; --faint:#7f8598;
   --teal:#5cdbb5; --violet:#8f9cff; --amber:#fbc25c; --rose:#fb7a7a;
   --mono:ui-monospace,"SF Mono",SFMono-Regular,"JetBrains Mono","Fira Code",Menlo,Consolas,monospace;
   --sans:Inter,"Inter Display",system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
@@ -145,7 +197,7 @@ section{padding:clamp(64px,9vw,108px) 0}
 .step{flex:1 1 150px;background:var(--surface);border:1px solid var(--line);border-radius:14px;
   padding:20px 18px;position:relative;overflow:hidden}
 .step .n{font-family:var(--mono);font-size:.72rem;color:var(--faint)}
-.step h4{margin:8px 0 6px;font-size:1rem}
+.step h3{margin:8px 0 6px;font-size:1rem}
 .step p{font-size:.85rem;color:var(--muted)}
 .step::before{content:"";position:absolute;left:0;top:0;height:2px;width:100%;
   background:linear-gradient(90deg,var(--teal),transparent);transform:scaleX(0);transform-origin:left;
@@ -185,8 +237,16 @@ tr.best td.num{color:var(--teal);font-weight:600}
 .copy:hover{color:var(--teal);border-color:var(--teal)}
 
 footer{border-top:1px solid var(--line);padding:52px 0 64px;color:var(--faint);font-size:.87rem}
-footer a{color:var(--muted);text-decoration:none}
-footer a:hover{color:var(--teal)}
+/* Underlined, not merely coloured: teal against the surrounding grey measures
+   1.84:1, so colour alone cannot be what marks a link. */
+footer a{color:var(--muted);text-decoration:underline;text-underline-offset:3px;
+  text-decoration-color:rgba(139,145,163,.45);display:inline-block;padding:4px 0;min-height:24px}
+footer a:hover{color:var(--teal);text-decoration-color:var(--teal)}
+.skip{position:absolute;left:-9999px;top:0;background:var(--teal);color:#05221b;
+  padding:12px 18px;border-radius:0 0 10px 0;font-weight:600;z-index:100}
+.skip:focus{left:0}
+:focus-visible{outline:2px solid var(--teal);outline-offset:3px;border-radius:4px}
+.nav a{min-height:24px;display:inline-flex;align-items:center}
 .foot{display:flex;flex-wrap:wrap;gap:28px;justify-content:space-between;align-items:flex-start}
 
 .reveal{opacity:0;transform:translateY(22px);transition:opacity .7s cubic-bezier(.2,.7,.3,1),transform .7s cubic-bezier(.2,.7,.3,1)}
@@ -217,7 +277,7 @@ footer a:hover{color:var(--teal)}
 </svg>
 
 <nav id="nav"><div class="wrap nav">
-  <a href="#top" aria-label="Murmur"><img src="brand/murmur-logo.svg" alt="Murmur"></a>
+  <a href="#top" aria-label="Murmur"><img src="brand/murmur-logo.svg" alt="Murmur" width="140" height="26"></a>
   <div class="spacer"></div>
   <a href="#how" class="hide-sm">How it works</a>
   <a href="#numbers" class="hide-sm">Numbers</a>
@@ -228,6 +288,8 @@ footer a:hover{color:var(--teal)}
     GitHub</a>
 </div></nav>
 
+<a class="skip" href="#numbers">Skip to content</a>
+<main>
 <header id="top"><div class="wrap">
   <div class="eyebrow"><span class="pulse"></span> Local-first · Linux · Apache-2.0</div>
   <h1>Voice typing that <span class="grad">never leaves</span> your machine.</h1>
@@ -252,7 +314,7 @@ footer a:hover{color:var(--teal)}
     </div>
     <div class="bar">
       <span class="dot" id="dot"></span>
-      <span class="meter" id="meter"></span>
+      <span class="meter" id="meter" aria-hidden="true"></span>
       <span class="said" id="said"><span class="faint">press and hold to dictate…</span></span>
       <span class="badge" id="badge">release → text 36ms</span>
     </div>
@@ -293,16 +355,16 @@ footer a:hover{color:var(--teal)}
   </div>
   <div class="pipe" id="pipe">
     <div class="step reveal"><div class="n">01</div><span class="ms">0 ms</span>
-      <h4>Trigger</h4><p>evdev reads the key straight from the kernel, so it works in any
+      <h3>Trigger</h3><p>evdev reads the key straight from the kernel, so it works in any
       session and reports press and release separately.</p></div>
     <div class="step reveal"><div class="n">02</div><span class="ms">live</span>
-      <h4>Capture</h4><p>The microphone never stops. A rolling pre-roll means the first
+      <h3>Capture</h3><p>The microphone never stops. A rolling pre-roll means the first
       syllable survives talking before the key is fully down.</p></div>
     <div class="step reveal"><div class="n">03</div><span class="ms">36 ms</span>
-      <h4>Transcribe</h4><p>NVIDIA Parakeet TDT through ONNX Runtime, punctuating and
+      <h3>Transcribe</h3><p>NVIDIA Parakeet TDT through ONNX Runtime, punctuating and
       capitalising on its own. Re-run while you speak for live text.</p></div>
     <div class="step reveal"><div class="n">04</div><span class="ms">&lt;60 ms</span>
-      <h4>Inject</h4><p>A <code>/dev/uinput</code> virtual keyboard the compositor cannot
+      <h3>Inject</h3><p>A <code>/dev/uinput</code> virtual keyboard the compositor cannot
       tell from real hardware. No portal, no clipboard, no cooperation needed.</p></div>
   </div>
 
@@ -440,9 +502,10 @@ murmur doctor">copy</button></div>
   </p>
 </div></section>
 
+</main>
 <footer><div class="wrap foot">
   <div>
-    <img src="brand/murmur-logo.svg" alt="Murmur" style="height:22px;display:block;margin-bottom:14px">
+    <img src="brand/murmur-logo.svg" alt="Murmur" width="119" height="22" style="display:block;margin-bottom:14px">
     <div>Apache-2.0 · <a href="https://github.com/copyleftdev/murmur">copyleftdev/murmur</a></div>
     <div style="margin-top:6px" class="faint">Nothing on this page is loaded from anywhere else.</div>
   </div>
